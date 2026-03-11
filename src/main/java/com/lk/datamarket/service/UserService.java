@@ -9,6 +9,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -42,7 +43,7 @@ public class UserService {
 
     public Result<String> register(String username, String password) {
         // 检查用户名是否已存在
-        User existUser = userMapper.findByUsername(username);
+        User existUser= userMapper.findByUsername(username);
         if (existUser != null) {
             return Result.error("用户名已存在");
         }
@@ -64,4 +65,31 @@ public class UserService {
         return Result.success("注册成功");
     }
 
+    public Result<User> getUserById(Long id) {
+        User user= userMapper.findById(id);
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
+        return Result.success(user);
+    }
+
+    public Result<List<User>> getAllUsers() {
+        List<User> users = userMapper.findAll();
+        return Result.success(users);
+    }
+
+    public Result<String> updateUser(User user) {
+        userMapper.update(user);
+        return Result.success("更新成功");
+    }
+
+    public Result<String> updatePoints(Long userId, Integer points) {
+        User user= userMapper.findById(userId);
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
+        user.setPoints(points);
+        userMapper.update(user);
+        return Result.success("积分更新成功");
+    }
 }

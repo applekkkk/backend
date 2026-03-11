@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: DataMarket
+  datasource:
+    url: jdbc:mysql://localhost:3306/data_market
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+
+server:
+  port: 8080
