@@ -19,6 +19,11 @@ public class CustomRequestService {
         return Result.success(requests);
     }
 
+    public Result<List<CustomRequest>> getMarketRequests(Long userId) {
+        List<CustomRequest> requests = customRequestMapper.findMarket(userId);
+        return Result.success(requests);
+    }
+
     public Result<CustomRequest> getRequestById(Long id) {
         CustomRequest request = customRequestMapper.findById(id);
         if (request == null) {
@@ -28,6 +33,9 @@ public class CustomRequestService {
     }
 
     public Result<String> createRequest(CustomRequest request) {
+        if (request == null) {
+            return Result.error("参数错误");
+        }
         request.setRequestNo(UUID.randomUUID().toString().replace("-", "").substring(0, 16));
         request.setNeedStatus(0); // 0=待承接
         customRequestMapper.insert(request);
@@ -35,12 +43,26 @@ public class CustomRequestService {
     }
 
     public Result<String> acceptRequest(Long id, Long acceptorId, String acceptorName) {
-        customRequestMapper.insert(new CustomRequest()); // 1=已承接
+        if (id == null || acceptorId == null || acceptorName == null || acceptorName.trim().isEmpty()) {
+            return Result.error("参数错误");
+        }
+        CustomRequest request = customRequestMapper.findById(id);
+        if (request == null) {
+            return Result.error("需求不存在");
+        }
+        Integer status = request.getNeedStatus();
+        if (status != null && status != 0) {
+            return Result.error("该任务已被承接");
+        }
+        request.setAcceptorId(acceptorId);
+        request.setAcceptorName(acceptorName);
+        request.setNeedStatus(1); // 1=已承接
+        customRequestMapper.update(request);
         return Result.success("承接成功");
     }
 
     public Result<List<CustomRequest>> getUserRequests(Long publisherId) {
-        List<CustomRequest> allRequests = customRequestMapper.findAll();
-        return Result.success(allRequests);
+        List<CustomRequest> requests = customRequestMapper.findByPublisherId(publisherId);
+        return Result.success(requests);
     }
 }

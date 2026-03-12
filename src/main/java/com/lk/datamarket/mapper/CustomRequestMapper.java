@@ -9,8 +9,14 @@ public interface CustomRequestMapper {
     @Select("SELECT * FROM custom_requests ORDER BY created_at DESC")
     List<CustomRequest> findAll();
 
+    @Select("SELECT * FROM custom_requests WHERE need_status = 0 AND (publisher_id <> #{publisherId} OR #{publisherId} IS NULL) ORDER BY created_at DESC")
+    List<CustomRequest> findMarket(@Param("publisherId") Long publisherId);
+
+    @Select("SELECT * FROM custom_requests WHERE publisher_id = #{publisherId} ORDER BY created_at DESC")
+    List<CustomRequest> findByPublisherId(@Param("publisherId") Long publisherId);
+
     @Select("SELECT * FROM custom_requests WHERE id = #{id}")
-    CustomRequest findById(Long id);
+    CustomRequest findById(@Param("id") Long id);
 
     @Insert("INSERT INTO custom_requests(request_no, title, description, category, tags, amount, budget, " +
             "deadline, publisher_id, publisher_name, publisher_contact, attachment_name, need_status, created_at) " +

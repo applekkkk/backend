@@ -16,6 +16,11 @@ public class CustomRequestController {
     @Autowired
     private CustomRequestService customRequestService;
 
+    @GetMapping
+    public Result<List<CustomRequest>> listMarket(@RequestParam(required = false) Long userId) {
+        return customRequestService.getMarketRequests(userId);
+    }
+
     @GetMapping("/all")
     public Result<List<CustomRequest>> getAllRequests() {
         return customRequestService.getAllRequests();
@@ -28,15 +33,15 @@ public class CustomRequestController {
 
     @PostMapping
     public Result<String> createRequest(@RequestBody CustomRequest request) {
-        log.info("发布自定义需求：{}", request.getTitle());
+        log.info("Create custom request: {}", request.getTitle());
         return customRequestService.createRequest(request);
     }
 
     @PutMapping("/{id}/accept")
-    public Result<String> acceptRequest(@PathVariable Long id, 
+    public Result<String> acceptRequest(@PathVariable Long id,
                                         @RequestParam Long acceptorId,
                                         @RequestParam String acceptorName) {
-        log.info("承接需求 ID: {}, 承接人：{}", id, acceptorName);
+        log.info("Accept request id: {}, acceptor: {}", id, acceptorName);
         return customRequestService.acceptRequest(id, acceptorId, acceptorName);
     }
 
