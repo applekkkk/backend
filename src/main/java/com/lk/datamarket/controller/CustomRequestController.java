@@ -11,7 +11,7 @@ import java.util.List;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/custom-requests")
+@RequestMapping("/custom-requests")
 public class CustomRequestController {
     @Autowired
     private CustomRequestService customRequestService;

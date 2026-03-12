@@ -4,6 +4,7 @@ import com.lk.datamarket.common.Result;
 import com.lk.datamarket.domain.User;
 import com.lk.datamarket.mapper.UserMapper;
 import com.lk.datamarket.utils.JwtUtil;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -12,6 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Service
 public class UserService {
     @Autowired
@@ -23,6 +25,12 @@ public class UserService {
             return Result.error("用户不存在");
         }
         final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+        log.info("admin123456的hash: {}", passwordEncoder.encode("admin123456"));
+
+        log.info("数据库密码: {}", user.getPassword());
+        log.info("输入密码: {}", password);
+        log.info("比对结果: {}", passwordEncoder.matches(password, user.getPassword()));
+
         if (passwordEncoder.matches(password, user.getPassword())) {
             Map<String, Object> claims = new HashMap<>();
             claims.put("id", user.getId());

@@ -10,6 +10,10 @@ spring:
 mybatis:
   configuration:
     map-underscore-to-camel-case: true
+  mapper-locations: classpath:mapper/*.xml
 
 server:
   port: 8080
+
+file:
+  upload-path: D:/Learning/Senior/the_end/file/csvData/

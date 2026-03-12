@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lk.datamarket.mapper.DataProductMapper">
+    
+    <select id="findByCondition" resultType="com.lk.datamarket.domain.DataProduct">
+        SELECT * FROM data_products 
+        WHERE review_status = 1
+        <if test="keyword != null and keyword != ''">
+            AND (name LIKE CONCAT('%', #{keyword}, '%') 
+                 OR info LIKE CONCAT('%', #{keyword}, '%') 
+                 OR tags LIKE CONCAT('%', #{keyword}, '%')
+                 OR author_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="category != null and category != '' and category != 'All'">
+            AND category = #{category}
+        </if>
+        <choose>
+            <when test="sortBy == 'price-asc'">
+                ORDER BY price ASC
+            </when>
+            <when test="sortBy == 'price-desc'">
+                ORDER BY price DESC
+            </when>
+            <when test="sortBy == 'size-asc'">
+                ORDER BY
+                (CASE
+                    WHEN size_label LIKE '%GB' THEN CAST(REPLACE(size_label, 'GB', '') AS DECIMAL(10,2)) * 1024
+                    WHEN size_label LIKE '%MB' THEN CAST(REPLACE(size_label, 'MB', '') AS DECIMAL(10,2))
+                    ELSE 0
+                END) ASC
+            </when>
+            <when test="sortBy == 'size-desc'">
+                ORDER BY
+                (CASE
+                    WHEN size_label LIKE '%GB' THEN CAST(REPLACE(size_label, 'GB', '') AS DECIMAL(10,2)) * 1024
+                    WHEN size_label LIKE '%MB' THEN CAST(REPLACE(size_label, 'MB', '') AS DECIMAL(10,2))
+                    ELSE 0
+                END) DESC
+            </when>
+            <otherwise>
+                ORDER BY (likes + stars) DESC
+            </otherwise>
+        </choose>
+        LIMIT #{offset}, #{limit}
+    </select>
+    
+    <select id="countByCondition" resultType="int">
+        SELECT COUNT(*) FROM data_products 
+        WHERE review_status = 1
+        <if test="keyword != null and keyword != ''">
+            AND (name LIKE CONCAT('%', #{keyword}, '%') 
+                 OR info LIKE CONCAT('%', #{keyword}, '%') 
+                 OR tags LIKE CONCAT('%', #{keyword}, '%')
+                 OR author_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="category != null and category != '' and category != 'All'">
+            AND category = #{category}
+        </if>
+    </select>
+    
+</mapper>
