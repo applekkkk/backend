@@ -2,11 +2,14 @@ package com.lk.datamarket.service;
 
 import com.lk.datamarket.common.Result;
 import com.lk.datamarket.domain.DataProduct;
+import com.lk.datamarket.domain.ProductUserAction;
 import com.lk.datamarket.domain.dto.ProductQueryRequest;
 import com.lk.datamarket.mapper.DataProductMapper;
+import com.lk.datamarket.mapper.ProductUserActionMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.PostConstruct;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
@@ -16,6 +19,14 @@ import java.util.Map;
 public class DataProductService {
     @Autowired
     private DataProductMapper dataProductMapper;
+
+    @Autowired
+    private ProductUserActionMapper productUserActionMapper;
+
+    @PostConstruct
+    public void initProductActionTable() {
+        productUserActionMapper.ensureTable();
+    }
 
     public Result<Map<String, Object>> queryProducts(ProductQueryRequest request) {
         if (request == null) {
@@ -31,16 +42,18 @@ public class DataProductService {
         int limit = request.getPageSize();
 
         List<DataProduct> products = dataProductMapper.findByCondition(
-            request.getKeyword(),
-            request.getCategory(),
-            request.getSortBy(),
-            offset,
-            limit
+                request.getKeyword(),
+                request.getCategory(),
+                request.getSortBy(),
+                offset,
+                limit
         );
 
+        enrichUserActions(products, request.getUserId());
+
         int total = dataProductMapper.countByCondition(
-            request.getKeyword(),
-            request.getCategory()
+                request.getKeyword(),
+                request.getCategory()
         );
 
         int totalPages = (int) Math.ceil((double) total / request.getPageSize());
@@ -59,13 +72,12 @@ public class DataProductService {
         product.setUploadDate(LocalDate.now());
         product.setReviewStatus(0);
         dataProductMapper.insert(product);
-        return Result.success("提交成功，等待审核");
+        return Result.success("?????????");
     }
 
     public Result<String> approveProduct(Long id, Integer status) {
-        // status: 1=approve, 2=reject
         dataProductMapper.updateReviewStatus(id, status);
-        return Result.success(status == 1 ? "审核通过" : "已驳回");
+        return Result.success(status == 1 ? "????" : "???");
     }
 
     public Result<List<DataProduct>> getPendingReviews() {
@@ -73,16 +85,119 @@ public class DataProductService {
         return Result.success(products);
     }
 
-    public Result<DataProduct> getProductById(Long id) {
+    public Result<DataProduct> getProductById(Long id, Long userId) {
         DataProduct product = dataProductMapper.findById(id);
         if (product == null) {
-            return Result.error("数据不存在");
+            return Result.error("?????");
         }
+        enrichUserAction(product, userId);
         return Result.success(product);
     }
 
     public Result<List<DataProduct>> getUserProducts(Long userId) {
         List<DataProduct> products = dataProductMapper.findApprovedByAuthorId(userId);
+        enrichUserActions(products, userId);
         return Result.success(products);
+    }
+
+    public Result<List<DataProduct>> getFavoriteProducts(Long userId) {
+        List<DataProduct> products = dataProductMapper.findFavoritedByUserId(userId);
+        enrichUserActions(products, userId);
+        return Result.success(products);
+    }
+
+    public Result<String> updateStats(Long id, DataProduct payload) {
+        DataProduct existing = dataProductMapper.findById(id);
+        if (existing == null) {
+            return Result.error("?????");
+        }
+        DataProduct update = new DataProduct();
+        update.setId(id);
+        update.setLikes(payload.getLikes() == null ? safeInt(existing.getLikes()) : payload.getLikes());
+        update.setStars(payload.getStars() == null ? safeInt(existing.getStars()) : payload.getStars());
+        update.setDownloads(payload.getDownloads() == null ? safeInt(existing.getDownloads()) : payload.getDownloads());
+        dataProductMapper.updateStats(update);
+        return Result.success("????");
+    }
+
+    public Result<DataProduct> setLike(Long id, Long userId, Boolean liked) {
+        if (id == null || userId == null) {
+            return Result.error("????");
+        }
+        DataProduct product = dataProductMapper.findById(id);
+        if (product == null) {
+            return Result.error("?????");
+        }
+
+        ProductUserAction current = productUserActionMapper.findByProductAndUser(id, userId);
+        int nextLiked = Boolean.TRUE.equals(liked) ? 1 : 0;
+        int favorited = current == null ? 0 : safeInt(current.getFavorited());
+        productUserActionMapper.upsert(id, userId, nextLiked, favorited);
+
+        return Result.success(recalcAndAttach(product, userId));
+    }
+
+    public Result<DataProduct> setFavorite(Long id, Long userId, Boolean favorited) {
+        if (id == null || userId == null) {
+            return Result.error("????");
+        }
+        DataProduct product = dataProductMapper.findById(id);
+        if (product == null) {
+            return Result.error("?????");
+        }
+
+        ProductUserAction current = productUserActionMapper.findByProductAndUser(id, userId);
+        int nextFavorited = Boolean.TRUE.equals(favorited) ? 1 : 0;
+        int liked = current == null ? 0 : safeInt(current.getLiked());
+        productUserActionMapper.upsert(id, userId, liked, nextFavorited);
+
+        return Result.success(recalcAndAttach(product, userId));
+    }
+
+    private DataProduct recalcAndAttach(DataProduct product, Long userId) {
+        int likes = productUserActionMapper.countLikes(product.getId());
+        int stars = productUserActionMapper.countFavorites(product.getId());
+
+        DataProduct update = new DataProduct();
+        update.setId(product.getId());
+        update.setLikes(likes);
+        update.setStars(stars);
+        update.setDownloads(safeInt(product.getDownloads()));
+        dataProductMapper.updateStats(update);
+
+        product.setLikes(likes);
+        product.setStars(stars);
+        enrichUserAction(product, userId);
+        return product;
+    }
+
+    private void enrichUserActions(List<DataProduct> products, Long userId) {
+        if (products == null) {
+            return;
+        }
+        for (DataProduct product : products) {
+            enrichUserAction(product, userId);
+        }
+    }
+
+    private void enrichUserAction(DataProduct product, Long userId) {
+        if (product == null) {
+            return;
+        }
+        product.setLiked(false);
+        product.setFavorited(false);
+        if (userId == null) {
+            return;
+        }
+        ProductUserAction action = productUserActionMapper.findByProductAndUser(product.getId(), userId);
+        if (action == null) {
+            return;
+        }
+        product.setLiked(safeInt(action.getLiked()) == 1);
+        product.setFavorited(safeInt(action.getFavorited()) == 1);
+    }
+
+    private int safeInt(Integer value) {
+        return value == null ? 0 : value;
     }
 }

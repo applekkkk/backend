@@ -37,4 +37,9 @@ public class UserController {
     public Result<String> updatePoints(@PathVariable Long id, @RequestParam Integer points) {
         return userService.updatePoints(id, points);
     }
+
+    @PostMapping("/{id}/checkin")
+    public Result<String> checkIn(@PathVariable Long id) {
+        return userService.checkIn(id);
+    }
 }

@@ -2,6 +2,7 @@ package com.lk.datamarket.service;
 
 import com.lk.datamarket.common.Result;
 import com.lk.datamarket.domain.CustomRequest;
+import com.lk.datamarket.domain.Order;
 import com.lk.datamarket.mapper.CustomRequestMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,9 @@ import java.util.UUID;
 public class CustomRequestService {
     @Autowired
     private CustomRequestMapper customRequestMapper;
+
+    @Autowired
+    private OrderService orderService;
 
     public Result<List<CustomRequest>> getAllRequests() {
         List<CustomRequest> requests = customRequestMapper.findAll();
@@ -58,6 +62,16 @@ public class CustomRequestService {
         request.setAcceptorName(acceptorName);
         request.setNeedStatus(1); // 1=已承接
         customRequestMapper.update(request);
+
+        Order order = new Order();
+        order.setBuyerId(acceptorId);
+        order.setProductId(0L);
+        order.setProductName("承接任务: " + (request.getTitle() == null ? "" : request.getTitle()));
+        order.setAmount(request.getBudget() == null ? 0 : request.getBudget());
+        Result<String> orderRes = orderService.createOrder(order);
+        if (orderRes.getCode() != 200) {
+            return Result.error(orderRes.getMessage());
+        }
         return Result.success("承接成功");
     }
 

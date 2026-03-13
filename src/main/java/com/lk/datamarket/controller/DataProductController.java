@@ -36,8 +36,9 @@ public class DataProductController {
     }
 
     @GetMapping("/{id}")
-    public Result<DataProduct> getProduct(@PathVariable Long id) {
-        return dataProductService.getProductById(id);
+    public Result<DataProduct> getProduct(@PathVariable Long id,
+                                          @RequestParam(required = false) Long userId) {
+        return dataProductService.getProductById(id, userId);
     }
 
     @PutMapping("/{id}/approve")
@@ -49,5 +50,29 @@ public class DataProductController {
     @GetMapping("/user/{userId}")
     public Result<List<DataProduct>> getUserProducts(@PathVariable Long userId) {
         return dataProductService.getUserProducts(userId);
+    }
+
+    @GetMapping("/favorites/{userId}")
+    public Result<List<DataProduct>> getFavoriteProducts(@PathVariable Long userId) {
+        return dataProductService.getFavoriteProducts(userId);
+    }
+
+    @PutMapping("/{id}/stats")
+    public Result<String> updateStats(@PathVariable Long id, @RequestBody DataProduct payload) {
+        return dataProductService.updateStats(id, payload);
+    }
+
+    @PutMapping("/{id}/like")
+    public Result<DataProduct> setLike(@PathVariable Long id,
+                                       @RequestParam Long userId,
+                                       @RequestParam Boolean liked) {
+        return dataProductService.setLike(id, userId, liked);
+    }
+
+    @PutMapping("/{id}/favorite")
+    public Result<DataProduct> setFavorite(@PathVariable Long id,
+                                           @RequestParam Long userId,
+                                           @RequestParam Boolean favorited) {
+        return dataProductService.setFavorite(id, userId, favorited);
     }
 }

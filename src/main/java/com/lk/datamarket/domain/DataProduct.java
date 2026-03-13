@@ -21,6 +21,8 @@ public class DataProduct {
     private Integer likes;
     private Integer stars;
     private Integer downloads;
+    private Boolean liked;
+    private Boolean favorited;
     private Integer reviewStatus;
     private LocalDate uploadDate;
     private LocalDateTime createdAt;

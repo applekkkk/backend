@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,22 +26,15 @@ public class UserService {
             return Result.error("用户不存在");
         }
         final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
-        log.info("admin123456的hash: {}", passwordEncoder.encode("admin123456"));
-
-        log.info("数据库密码: {}", user.getPassword());
-        log.info("输入密码: {}", password);
-        log.info("比对结果: {}", passwordEncoder.matches(password, user.getPassword()));
-
         if (passwordEncoder.matches(password, user.getPassword())) {
             Map<String, Object> claims = new HashMap<>();
             claims.put("id", user.getId());
             claims.put("username", user.getUsername());
             String token = JwtUtil.genToken(claims);
 
-            // 返回 token 和 role
             Map<String, Object> data = new HashMap<>();
             data.put("token", token);
-            data.put("role", user.getRole());  // 0=普通用户 1=管理员
+            data.put("role", user.getRole());
             data.put("id", user.getId());
             data.put("name", user.getName());
             return Result.success(data);
@@ -50,22 +44,19 @@ public class UserService {
     }
 
     public Result<String> register(String username, String password) {
-        // 检查用户名是否已存在
-        User existUser= userMapper.findByUsername(username);
+        User existUser = userMapper.findByUsername(username);
         if (existUser != null) {
             return Result.error("用户名已存在");
         }
 
-        // 密码加密
         BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
         String encodedPassword = passwordEncoder.encode(password);
 
-        // 创建新用户
         User user = new User();
         user.setUsername(username);
         user.setPassword(encodedPassword);
-        user.setName(username); // 默认昵称和用户名一样
-        user.setRole(0);        // 默认普通用户
+        user.setName(username);
+        user.setRole(0);
         user.setPoints(0);
         user.setStatus(0);
 
@@ -74,7 +65,7 @@ public class UserService {
     }
 
     public Result<User> getUserById(Long id) {
-        User user= userMapper.findById(id);
+        User user = userMapper.findById(id);
         if (user == null) {
             return Result.error("用户不存在");
         }
@@ -92,12 +83,28 @@ public class UserService {
     }
 
     public Result<String> updatePoints(Long userId, Integer points) {
-        User user= userMapper.findById(userId);
+        User user = userMapper.findById(userId);
         if (user == null) {
             return Result.error("用户不存在");
         }
         user.setPoints(points);
         userMapper.update(user);
         return Result.success("积分更新成功");
+    }
+
+    public Result<String> checkIn(Long userId) {
+        User user = userMapper.findById(userId);
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
+        LocalDate today = LocalDate.now();
+        if (today.equals(user.getLastCheckInDate())) {
+            return Result.error("今日已签到");
+        }
+        int current = user.getPoints() == null ? 0 : user.getPoints();
+        user.setPoints(current + 10);
+        user.setLastCheckInDate(today);
+        userMapper.update(user);
+        return Result.success("签到成功");
     }
 }

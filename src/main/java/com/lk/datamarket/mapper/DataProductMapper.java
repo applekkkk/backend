@@ -6,19 +6,21 @@ import java.util.List;
 
 @Mapper
 public interface DataProductMapper {
-    // 动态查询已审核的产品（含分页）
     List<DataProduct> findByCondition(@Param("keyword") String keyword,
-                                       @Param("category") String category,
-                                       @Param("sortBy") String sortBy,
-                                       @Param("offset") Integer offset,
-                                       @Param("limit") Integer limit);
-    
-    // 查询总数
+                                      @Param("category") String category,
+                                      @Param("sortBy") String sortBy,
+                                      @Param("offset") Integer offset,
+                                      @Param("limit") Integer limit);
+
     int countByCondition(@Param("keyword") String keyword,
                          @Param("category") String category);
 
     @Select("SELECT * FROM data_products WHERE review_status = 1 AND author_id = #{authorId} ORDER BY created_at DESC")
     List<DataProduct> findApprovedByAuthorId(@Param("authorId") Long authorId);
+
+    @Select("SELECT p.* FROM data_products p INNER JOIN product_user_actions a ON a.product_id = p.id " +
+            "WHERE p.review_status = 1 AND a.user_id = #{userId} AND a.favorited = 1 ORDER BY a.updated_at DESC")
+    List<DataProduct> findFavoritedByUserId(@Param("userId") Long userId);
 
     @Select("SELECT * FROM data_products WHERE review_status = 0 ORDER BY created_at DESC")
     List<DataProduct> findPendingReviews();
