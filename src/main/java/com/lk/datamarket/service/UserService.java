@@ -20,27 +20,28 @@ public class UserService {
     @Autowired
     private UserMapper userMapper;
 
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
     public Result<Map<String, Object>> login(String username, String password) {
         User user = userMapper.findByUsername(username);
         if (user == null) {
             return Result.error("用户不存在");
         }
-        final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
-        if (passwordEncoder.matches(password, user.getPassword())) {
-            Map<String, Object> claims = new HashMap<>();
-            claims.put("id", user.getId());
-            claims.put("username", user.getUsername());
-            String token = JwtUtil.genToken(claims);
-
-            Map<String, Object> data = new HashMap<>();
-            data.put("token", token);
-            data.put("role", user.getRole());
-            data.put("id", user.getId());
-            data.put("name", user.getName());
-            return Result.success(data);
-        } else {
+        if (!passwordEncoder.matches(password, user.getPassword())) {
             return Result.error("密码错误");
         }
+
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("id", user.getId());
+        claims.put("username", user.getUsername());
+        String token = JwtUtil.genToken(claims);
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("token", token);
+        data.put("role", user.getRole());
+        data.put("id", user.getId());
+        data.put("name", user.getName());
+        return Result.success(data);
     }
 
     public Result<String> register(String username, String password) {
@@ -49,17 +50,13 @@ public class UserService {
             return Result.error("用户名已存在");
         }
 
-        BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
-        String encodedPassword = passwordEncoder.encode(password);
-
         User user = new User();
         user.setUsername(username);
-        user.setPassword(encodedPassword);
+        user.setPassword(passwordEncoder.encode(password));
         user.setName(username);
         user.setRole(0);
         user.setPoints(0);
         user.setStatus(0);
-
         userMapper.insert(user);
         return Result.success("注册成功");
     }
@@ -73,13 +70,41 @@ public class UserService {
     }
 
     public Result<List<User>> getAllUsers() {
-        List<User> users = userMapper.findAll();
-        return Result.success(users);
+        return Result.success(userMapper.findAll());
     }
 
     public Result<String> updateUser(User user) {
-        userMapper.update(user);
+        if (user == null || user.getId() == null) {
+            return Result.error("用户ID不能为空");
+        }
+        User existing = userMapper.findById(user.getId());
+        if (existing == null) {
+            return Result.error("用户不存在");
+        }
+        existing.setName(user.getName());
+        existing.setAvatar(user.getAvatar());
+        existing.setBio(user.getBio());
+        userMapper.update(existing);
         return Result.success("更新成功");
+    }
+
+    public Result<String> changePassword(Long userId, String oldPassword, String newPassword) {
+        if (userId == null) {
+            return Result.error("用户ID不能为空");
+        }
+        if (oldPassword == null || oldPassword.trim().isEmpty()
+                || newPassword == null || newPassword.trim().isEmpty()) {
+            return Result.error("旧密码和新密码不能为空");
+        }
+        User user = userMapper.findById(userId);
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
+        if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
+            return Result.error("旧密码不正确");
+        }
+        userMapper.updatePassword(userId, passwordEncoder.encode(newPassword));
+        return Result.success("密码修改成功");
     }
 
     public Result<String> updatePoints(Long userId, Integer points) {

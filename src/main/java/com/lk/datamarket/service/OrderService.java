@@ -30,6 +30,14 @@ public class OrderService {
     }
 
     public Result<String> createOrder(Order order) {
+        return createOrderInternal(order, false);
+    }
+
+    public Result<String> createOrderAllowNegative(Order order) {
+        return createOrderInternal(order, true);
+    }
+
+    private Result<String> createOrderInternal(Order order, boolean allowNegative) {
         if (order == null || order.getBuyerId() == null) {
             return Result.error("参数错误");
         }
@@ -37,15 +45,16 @@ public class OrderService {
         if (user == null) {
             return Result.error("用户不存在");
         }
+
         int amount = order.getAmount() == null ? 0 : order.getAmount();
         int current = user.getPoints() == null ? 0 : user.getPoints();
         int next = current + amount;
-        if (next < 0) {
+        if (!allowNegative && next < 0) {
             return Result.error("积分不足");
         }
 
         order.setOrderNo(UUID.randomUUID().toString().replace("-", "").substring(0, 16));
-        order.setStatus(1); // 1=已完成
+        order.setStatus(1);
         orderMapper.insert(order);
 
         user.setPoints(next);

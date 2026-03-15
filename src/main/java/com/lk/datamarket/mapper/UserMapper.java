@@ -24,4 +24,7 @@ public interface UserMapper {
     @Update("UPDATE users SET name=#{name}, avatar=#{avatar}, bio=#{bio}, " +
             "points=#{points}, last_check_in_date=#{lastCheckInDate}, updated_at=NOW() WHERE id=#{id}")
     int update(User user);
+
+    @Update("UPDATE users SET password=#{password}, updated_at=NOW() WHERE id=#{id}")
+    int updatePassword(@Param("id") Long id, @Param("password") String password);
 }

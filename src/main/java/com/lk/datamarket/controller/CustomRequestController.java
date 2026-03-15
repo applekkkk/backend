@@ -45,6 +45,21 @@ public class CustomRequestController {
         return customRequestService.acceptRequest(id, acceptorId, acceptorName);
     }
 
+    @PutMapping("/{id}/delivery")
+    public Result<String> submitDelivery(@PathVariable Long id,
+                                         @RequestParam Long acceptorId,
+                                         @RequestParam String deliveryFileName) {
+        log.info("Submit delivery, request id: {}, acceptorId: {}, file: {}", id, acceptorId, deliveryFileName);
+        return customRequestService.submitDelivery(id, acceptorId, deliveryFileName);
+    }
+
+    @PutMapping("/{id}/complete")
+    public Result<String> confirmComplete(@PathVariable Long id,
+                                          @RequestParam Long publisherId) {
+        log.info("Confirm custom request complete, request id: {}, publisherId: {}", id, publisherId);
+        return customRequestService.confirmComplete(id, publisherId);
+    }
+
     @GetMapping("/user/{userId}")
     public Result<List<CustomRequest>> getUserRequests(@PathVariable Long userId) {
         return customRequestService.getUserRequests(userId);

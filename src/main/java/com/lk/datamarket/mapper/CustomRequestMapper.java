@@ -2,6 +2,7 @@ package com.lk.datamarket.mapper;
 
 import com.lk.datamarket.domain.CustomRequest;
 import org.apache.ibatis.annotations.*;
+
 import java.util.List;
 
 @Mapper
@@ -25,7 +26,17 @@ public interface CustomRequestMapper {
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(CustomRequest request);
 
-    @Update("UPDATE custom_requests SET acceptor_id=#{acceptorId}, acceptor_name=#{acceptorName}, " +
-            "need_status=#{needStatus}, updated_at=NOW() WHERE id=#{id}")
-    int update(CustomRequest request);
+    @Update("UPDATE custom_requests SET acceptor_id=#{acceptorId}, acceptor_name=#{acceptorName}, need_status=#{needStatus}, updated_at=NOW() WHERE id=#{id} AND need_status=0")
+    int updateAccept(@Param("id") Long id,
+                     @Param("acceptorId") Long acceptorId,
+                     @Param("acceptorName") String acceptorName,
+                     @Param("needStatus") Integer needStatus);
+
+    @Update("UPDATE custom_requests SET delivery_file_name=#{deliveryFileName}, need_status=#{needStatus}, updated_at=NOW() WHERE id=#{id} AND need_status=1")
+    int updateDelivery(@Param("id") Long id,
+                       @Param("deliveryFileName") String deliveryFileName,
+                       @Param("needStatus") Integer needStatus);
+
+    @Update("UPDATE custom_requests SET need_status=#{needStatus}, updated_at=NOW() WHERE id=#{id} AND need_status=2")
+    int updateStatus(@Param("id") Long id, @Param("needStatus") Integer needStatus);
 }
