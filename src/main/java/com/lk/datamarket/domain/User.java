@@ -13,6 +13,8 @@ public class User {
     private Integer role;
     private String avatar;
     private String bio;
+    private String email;
+    private Integer emailVerified;
     private Integer points;
     private Integer status;
     private LocalDate lastCheckInDate;

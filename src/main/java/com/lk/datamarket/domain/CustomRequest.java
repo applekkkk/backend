@@ -17,10 +17,12 @@ public class CustomRequest {
     private LocalDate deadline;
     private Long publisherId;
     private String publisherName;
+    private String publisherEmail;
     private String publisherContact;
     private String attachmentName;
     private Long acceptorId;
     private String acceptorName;
+    private String acceptorEmail;
     private String deliveryFileName;
     private Integer needStatus;
     private LocalDateTime createdAt;

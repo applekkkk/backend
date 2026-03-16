@@ -6,6 +6,23 @@ spring:
     username: root
     password: root
     driver-class-name: com.mysql.cj.jdbc.Driver
+  mail:
+    host: smtp.qq.com
+    port: 587
+    username: ${MAIL_USERNAME:1035975321@qq.com}
+    password: ${MAIL_PASSWORD:tjcwmfvfmeznbbca}
+    protocol: smtp
+    properties:
+      mail:
+        smtp:
+          auth: true
+          connectiontimeout: 15000
+          timeout: 15000
+          writetimeout: 15000
+          starttls:
+            enable: true
+          ssl:
+            enable: false
 
 mybatis:
   configuration:

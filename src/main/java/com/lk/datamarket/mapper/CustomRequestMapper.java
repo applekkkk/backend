@@ -39,4 +39,8 @@ public interface CustomRequestMapper {
 
     @Update("UPDATE custom_requests SET need_status=#{needStatus}, updated_at=NOW() WHERE id=#{id} AND need_status=2")
     int updateStatus(@Param("id") Long id, @Param("needStatus") Integer needStatus);
+
+    @Update("UPDATE custom_requests SET acceptor_id=NULL, acceptor_name=NULL, delivery_file_name='', need_status=0, updated_at=NOW() " +
+            "WHERE acceptor_id=#{userId} AND need_status IN (1,2)")
+    int releaseByAcceptorId(@Param("userId") Long userId);
 }

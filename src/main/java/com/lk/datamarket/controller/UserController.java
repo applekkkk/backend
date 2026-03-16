@@ -39,6 +39,18 @@ public class UserController {
         return userService.changePassword(id, request.getOldPassword(), request.getNewPassword());
     }
 
+    @PostMapping("/{id}/email/code")
+    public Result<String> sendEmailCode(@PathVariable Long id, @RequestParam String email) {
+        return userService.sendEmailCode(id, email);
+    }
+
+    @PostMapping("/{id}/email/verify")
+    public Result<String> verifyEmail(@PathVariable Long id,
+                                      @RequestParam String email,
+                                      @RequestParam String code) {
+        return userService.verifyEmail(id, email, code);
+    }
+
     @PutMapping("/{id}/points")
     public Result<String> updatePoints(@PathVariable Long id, @RequestParam Integer points) {
         return userService.updatePoints(id, points);

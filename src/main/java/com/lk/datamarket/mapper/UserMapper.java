@@ -22,9 +22,24 @@ public interface UserMapper {
     int insert(User user);
 
     @Update("UPDATE users SET name=#{name}, avatar=#{avatar}, bio=#{bio}, " +
-            "points=#{points}, last_check_in_date=#{lastCheckInDate}, updated_at=NOW() WHERE id=#{id}")
+            "email=#{email}, email_verified=#{emailVerified}, points=#{points}, status=#{status}, " +
+            "last_check_in_date=#{lastCheckInDate}, updated_at=NOW() WHERE id=#{id}")
     int update(User user);
 
     @Update("UPDATE users SET password=#{password}, updated_at=NOW() WHERE id=#{id}")
     int updatePassword(@Param("id") Long id, @Param("password") String password);
+
+    @Select("SELECT COUNT(1) FROM information_schema.columns " +
+            "WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email'")
+    int existsEmailColumn();
+
+    @Select("SELECT COUNT(1) FROM information_schema.columns " +
+            "WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email_verified'")
+    int existsEmailVerifiedColumn();
+
+    @Update("ALTER TABLE users ADD COLUMN email VARCHAR(128) NULL")
+    void addEmailColumn();
+
+    @Update("ALTER TABLE users ADD COLUMN email_verified TINYINT NOT NULL DEFAULT 0")
+    void addEmailVerifiedColumn();
 }
