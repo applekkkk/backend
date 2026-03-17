@@ -60,6 +60,13 @@ public class CustomRequestController {
         return customRequestService.confirmComplete(id, publisherId);
     }
 
+    @PutMapping("/{id}/reject")
+    public Result<String> rejectDelivery(@PathVariable Long id,
+                                         @RequestParam Long publisherId) {
+        log.info("Reject delivery, request id: {}, publisherId: {}", id, publisherId);
+        return customRequestService.rejectDelivery(id, publisherId);
+    }
+
     @GetMapping("/user/{userId}")
     public Result<List<CustomRequest>> getUserRequests(@PathVariable Long userId) {
         return customRequestService.getUserRequests(userId);

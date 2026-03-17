@@ -127,6 +127,22 @@ public class CustomRequestService {
         return Result.success("任务已完成并结算");
     }
 
+    public Result<String> rejectDelivery(Long id, Long publisherId) {
+        if (id == null || publisherId == null) return Result.error("参数错误");
+        CustomRequest request = customRequestMapper.findById(id);
+        if (request == null) return Result.error("任务不存在");
+        if (request.getPublisherId() == null || !request.getPublisherId().equals(publisherId)) {
+            return Result.error("仅发布方可打回任务");
+        }
+        if (request.getNeedStatus() == null || request.getNeedStatus() != 2) {
+            return Result.error("当前状态不可打回");
+        }
+
+        int rows = customRequestMapper.updateStatus(id, 1);
+        if (rows <= 0) return Result.error("任务状态已变化，打回失败");
+        return Result.success("已打回，任务恢复为进行中");
+    }
+
     public Result<List<CustomRequest>> getUserRequests(Long publisherId) {
         List<CustomRequest> list = customRequestMapper.findByPublisherId(publisherId);
         list.forEach(this::fillEmails);
