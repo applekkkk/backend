@@ -26,17 +26,25 @@ import java.util.regex.Pattern;
 @Service
 public class UserService {
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+
     @Autowired
     private UserMapper userMapper;
+
     @Autowired
     private CustomRequestMapper customRequestMapper;
+
     @Autowired
     private JavaMailSender mailSender;
+
     @Value("${spring.mail.username}")
     private String mailFrom;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
+    // 已登录用户邮箱验证验证码（按 userId）
     private final Map<Long, EmailCodeTicket> emailCodeMap = new ConcurrentHashMap<>();
+    // 注册阶段验证码（按 email）
+    private final Map<String, EmailCodeTicket> registerEmailCodeMap = new ConcurrentHashMap<>();
 
     @PostConstruct
     public void ensureColumns() {
@@ -69,19 +77,44 @@ public class UserService {
         return Result.success(data);
     }
 
-    public Result<String> register(String username, String password) {
+    public Result<String> sendRegisterEmailCode(String email) {
+        if (!isValidEmail(email)) return Result.error("邮箱格式不正确");
+        String normalized = normalizeEmail(email);
+        String code = generateCode();
+        LocalDateTime expireAt = LocalDateTime.now().plusMinutes(10);
+        registerEmailCodeMap.put(normalized, new EmailCodeTicket(normalized, code, expireAt));
+        return sendCodeMail(normalized, code);
+    }
+
+    public Result<String> register(String username, String password, String email, String emailCode) {
+        if (isBlank(username) || isBlank(password)) return Result.error("用户名和密码不能为空");
+        if (!isValidEmail(email)) return Result.error("邮箱格式不正确");
+        if (isBlank(emailCode)) return Result.error("请输入邮箱验证码");
         if (userMapper.findByUsername(username) != null) return Result.error("用户名已存在");
 
+        String normalized = normalizeEmail(email);
+        EmailCodeTicket ticket = registerEmailCodeMap.get(normalized);
+        if (ticket == null) return Result.error("请先发送邮箱验证码");
+        if (LocalDateTime.now().isAfter(ticket.expireAt)) {
+            registerEmailCodeMap.remove(normalized);
+            return Result.error("邮箱验证码已过期，请重新发送");
+        }
+        if (!ticket.code.equals(emailCode.trim())) {
+            return Result.error("邮箱验证码错误");
+        }
+
         User user = new User();
-        user.setUsername(username);
+        user.setUsername(username.trim());
         user.setPassword(passwordEncoder.encode(password));
-        user.setName(username);
+        user.setName(username.trim());
         user.setRole(0);
         user.setPoints(0);
         user.setStatus(0);
-        user.setEmail("");
-        user.setEmailVerified(0);
+        user.setEmail(normalized);
+        user.setEmailVerified(1);
         userMapper.insert(user);
+
+        registerEmailCodeMap.remove(normalized);
         return Result.success("注册成功");
     }
 
@@ -124,22 +157,11 @@ public class UserService {
         User user = userMapper.findById(userId);
         if (user == null) return Result.error("用户不存在");
 
-        String code = String.valueOf((int) ((Math.random() * 9 + 1) * 100000));
+        String normalized = normalizeEmail(email);
+        String code = generateCode();
         LocalDateTime expireAt = LocalDateTime.now().plusMinutes(10);
-        emailCodeMap.put(userId, new EmailCodeTicket(email.trim(), code, expireAt));
-        try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(mailFrom);
-            message.setTo(email.trim());
-            message.setSubject("DataMarket 邮箱验证码");
-            message.setText("你的验证码是：" + code + "，10分钟内有效。");
-            mailSender.send(message);
-            return Result.success("验证码已发送，请查收邮箱");
-        } catch (Exception ex) {
-            log.error("send email failed userId={}, email={}", userId, email, ex);
-            String reason = ex.getMessage() == null ? "请检查邮箱SMTP配置" : ex.getMessage();
-            return Result.error("验证码发送失败：" + reason);
-        }
+        emailCodeMap.put(userId, new EmailCodeTicket(normalized, code, expireAt));
+        return sendCodeMail(normalized, code);
     }
 
     public Result<String> verifyEmail(Long userId, String email, String code) {
@@ -154,11 +176,11 @@ public class UserService {
             emailCodeMap.remove(userId);
             return Result.error("验证码已过期");
         }
-        if (!ticket.email.equalsIgnoreCase(email.trim()) || !ticket.code.equals(code.trim())) {
+        if (!ticket.email.equalsIgnoreCase(normalizeEmail(email)) || !ticket.code.equals(code.trim())) {
             return Result.error("验证码错误");
         }
 
-        user.setEmail(email.trim());
+        user.setEmail(normalizeEmail(email));
         user.setEmailVerified(1);
         userMapper.update(user);
         emailCodeMap.remove(userId);
@@ -192,6 +214,30 @@ public class UserService {
         user.setLastCheckInDate(today);
         userMapper.update(user);
         return Result.success("签到成功");
+    }
+
+    private Result<String> sendCodeMail(String email, String code) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(mailFrom);
+            message.setTo(email);
+            message.setSubject("DataMarket 邮箱验证码");
+            message.setText("你的验证码是：" + code + "，10分钟内有效。");
+            mailSender.send(message);
+            return Result.success("验证码已发送，请查收邮箱");
+        } catch (Exception ex) {
+            log.error("send email failed email={}", email, ex);
+            String reason = ex.getMessage() == null ? "请检查邮箱SMTP配置" : ex.getMessage();
+            return Result.error("验证码发送失败：" + reason);
+        }
+    }
+
+    private String generateCode() {
+        return String.valueOf((int) ((Math.random() * 9 + 1) * 100000));
+    }
+
+    private String normalizeEmail(String email) {
+        return email == null ? "" : email.trim().toLowerCase();
     }
 
     private int safeInt(Integer value) {

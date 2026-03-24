@@ -13,11 +13,11 @@ public interface UserMapper {
     @Select("SELECT * FROM users WHERE id = #{id}")
     User findById(Long id);
 
-    @Select("SELECT * FROM users ORDER BY created_at DESC")
+    @Select("SELECT * FROM users where role = 0 ORDER BY created_at DESC")
     List<User> findAll();
 
-    @Insert("INSERT INTO users(username, password, name, role, points, status, created_at) " +
-            "VALUES(#{username}, #{password}, #{name}, #{role}, #{points}, #{status}, NOW())")
+    @Insert("INSERT INTO users(username, password, name, role, points, status, email, email_verified, created_at) " +
+            "VALUES(#{username}, #{password}, #{name}, #{role}, #{points}, #{status}, #{email}, #{emailVerified}, NOW())")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(User user);
 
