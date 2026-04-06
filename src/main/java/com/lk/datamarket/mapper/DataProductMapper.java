@@ -28,6 +28,9 @@ public interface DataProductMapper {
     @Select("SELECT * FROM data_products WHERE id = #{id}")
     DataProduct findById(@Param("id") Long id);
 
+    @Select("SELECT * FROM data_products WHERE file_name = #{fileName} LIMIT 1")
+    DataProduct findByFileName(@Param("fileName") String fileName);
+
     @Insert("INSERT INTO data_products(name, info, category, tags, price, size_label, seller, " +
             "author_id, author_name, file_name, summary, review_status, upload_date, created_at) " +
             "VALUES(#{name}, #{info}, #{category}, #{tags}, #{price}, #{sizeLabel}, #{seller}, " +
