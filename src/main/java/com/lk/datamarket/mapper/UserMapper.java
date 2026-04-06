@@ -13,6 +13,9 @@ public interface UserMapper {
     @Select("SELECT * FROM users WHERE id = #{id}")
     User findById(Long id);
 
+    @Select("SELECT COUNT(1) FROM users WHERE name = #{name} AND id <> #{id}")
+    int countByNameExcludeId(@Param("name") String name, @Param("id") Long id);
+
     @Select("SELECT * FROM users where role = 0 ORDER BY created_at DESC")
     List<User> findAll();
 

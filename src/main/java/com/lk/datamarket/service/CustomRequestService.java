@@ -143,6 +143,45 @@ public class CustomRequestService {
         return Result.success("已打回，任务恢复为进行中");
     }
 
+    public Result<String> adminUpdateStatus(Long id, Integer status) {
+        if (id == null || status == null) return Result.error("参数错误");
+        if (status < 0 || status > 3) return Result.error("状态值不合法");
+
+        CustomRequest request = customRequestMapper.findById(id);
+        if (request == null) return Result.error("任务不存在");
+        int current = request.getNeedStatus() == null ? 0 : request.getNeedStatus();
+
+        if (current == 3 && status != 3) {
+            return Result.error("已完成任务不允许改回其他状态");
+        }
+        if (current == status) {
+            return Result.success("状态未变化");
+        }
+
+        if (status == 0) {
+            if (current != 1 && current != 2) {
+                return Result.error("当前状态不可释放为未承接");
+            }
+            int released = customRequestMapper.forceReleaseById(id);
+            if (released <= 0) return Result.error("状态更新失败，请刷新后重试");
+            return Result.success("已修改为未承接");
+        }
+
+        if (status == 3) {
+            if (current != 1 && current != 2) {
+                return Result.error("当前状态不可修改为已完成");
+            }
+            return settleAndCompleteAsAdmin(request);
+        }
+
+        if (request.getAcceptorId() == null) {
+            return Result.error("当前任务无承接方，不能修改为进行中或待发布者确认");
+        }
+        int rows = customRequestMapper.adminUpdateStatus(id, status);
+        if (rows <= 0) return Result.error("状态更新失败");
+        return Result.success("状态更新成功");
+    }
+
     public Result<List<CustomRequest>> getUserRequests(Long publisherId) {
         List<CustomRequest> list = customRequestMapper.findByPublisherId(publisherId);
         list.forEach(this::fillEmails);
@@ -170,5 +209,34 @@ public class CustomRequestService {
 
     private boolean isBlank(String text) {
         return text == null || text.trim().isEmpty();
+    }
+
+    private Result<String> settleAndCompleteAsAdmin(CustomRequest request) {
+        if (request.getPublisherId() == null || request.getAcceptorId() == null) {
+            return Result.error("任务缺少发布方或承接方，无法结算");
+        }
+
+        int budget = request.getBudget() == null ? 0 : Math.max(0, request.getBudget());
+        String taskTitle = request.getTitle() == null ? "任务" : request.getTitle();
+
+        Order payerOrder = new Order();
+        payerOrder.setBuyerId(request.getPublisherId());
+        payerOrder.setProductId(request.getId());
+        payerOrder.setProductName("任务结算支出：" + taskTitle + "（管理员修改状态）");
+        payerOrder.setAmount(-budget);
+        Result<String> payerRes = orderService.createOrderAllowNegative(payerOrder);
+        if (payerRes.getCode() != 200) return Result.error(payerRes.getMessage());
+
+        Order workerOrder = new Order();
+        workerOrder.setBuyerId(request.getAcceptorId());
+        workerOrder.setProductId(request.getId());
+        workerOrder.setProductName("任务结算收入：" + taskTitle + "（管理员修改状态）");
+        workerOrder.setAmount(budget);
+        Result<String> workerRes = orderService.createOrder(workerOrder);
+        if (workerRes.getCode() != 200) return Result.error(workerRes.getMessage());
+
+        int rows = customRequestMapper.forceCompleteById(request.getId());
+        if (rows <= 0) return Result.error("任务状态已变化，修改失败");
+        return Result.success("已修改为完成并完成结算");
     }
 }

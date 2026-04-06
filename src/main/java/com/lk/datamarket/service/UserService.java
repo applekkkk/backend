@@ -133,8 +133,16 @@ public class UserService {
         User existing = userMapper.findById(user.getId());
         if (existing == null) return Result.error("用户不存在");
 
+        if (user.getName() != null) {
+            String nextName = user.getName().trim();
+            if (nextName.isEmpty()) return Result.error("用户名不能为空");
+            if (!nextName.equals(existing.getName()) && userMapper.countByNameExcludeId(nextName, user.getId()) > 0) {
+                return Result.error("用户名已存在");
+            }
+            existing.setName(nextName);
+        }
+
         int prevStatus = safeInt(existing.getStatus());
-        existing.setName(defaultStr(user.getName(), existing.getName()));
         existing.setAvatar(defaultStr(user.getAvatar(), existing.getAvatar()));
         existing.setBio(defaultStr(user.getBio(), existing.getBio()));
         existing.setPoints(user.getPoints() == null ? existing.getPoints() : user.getPoints());

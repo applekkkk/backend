@@ -28,7 +28,15 @@ public class OrderController {
 
     @PostMapping
     public Result<String> createOrder(@RequestBody Order order) {
-        log.info("创建订单：{}", order.getProductName());
+        log.info("create order: {}", order.getProductName());
         return orderService.createOrder(order);
+    }
+
+    @PutMapping("/admin/purchase-status")
+    public Result<String> adminSetPurchaseStatus(@RequestParam Long buyerId,
+                                                 @RequestParam Long productId,
+                                                 @RequestParam Boolean purchased) {
+        log.info("admin set purchase status, buyerId={}, productId={}, purchased={}", buyerId, productId, purchased);
+        return orderService.adminSetPurchaseStatus(buyerId, productId, purchased);
     }
 }

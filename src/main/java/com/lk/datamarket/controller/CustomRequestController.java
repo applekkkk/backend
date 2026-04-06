@@ -67,6 +67,13 @@ public class CustomRequestController {
         return customRequestService.rejectDelivery(id, publisherId);
     }
 
+    @PutMapping("/{id}/admin-status")
+    public Result<String> adminUpdateStatus(@PathVariable Long id,
+                                            @RequestParam Integer status) {
+        log.info("Admin update custom request status, id: {}, status: {}", id, status);
+        return customRequestService.adminUpdateStatus(id, status);
+    }
+
     @GetMapping("/user/{userId}")
     public Result<List<CustomRequest>> getUserRequests(@PathVariable Long userId) {
         return customRequestService.getUserRequests(userId);
