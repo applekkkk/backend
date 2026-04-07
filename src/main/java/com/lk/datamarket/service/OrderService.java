@@ -16,14 +16,14 @@ import java.util.UUID;
 
 @Service
 public class OrderService {
-    private static final String ORDER_PURCHASE_PREFIX = "\u8d2d\u4e70\u6570\u636e:";
-    private static final String ORDER_ADMIN_GRANT_PREFIX = "\u7ba1\u7406\u5458\u6388\u6743\u8d2d\u4e70:";
-    private static final String ORDER_SALE_INCOME_PREFIX = "\u6570\u636e\u9500\u552e\u6536\u5165:";
-    private static final String ORDER_ADMIN_REFUND_PREFIX = "\u7ba1\u7406\u5458\u7533\u8bc9\u9000\u6b3e:";
-    private static final String ORDER_TASK_ACCEPT_PREFIX = "\u627f\u63a5\u4efb\u52a1\u8bb0\u5f55:";
-    private static final String ORDER_TASK_PAYOUT_PREFIX = "\u4efb\u52a1\u7ed3\u7b97\u652f\u51fa:";
-    private static final String ORDER_TASK_INCOME_PREFIX = "\u4efb\u52a1\u7ed3\u7b97\u6536\u5165:";
-    private static final String ORDER_AI_PROCESS_PREFIX = "AI\u6570\u636e\u5904\u7406:";
+    private static final String ORDER_PURCHASE_PREFIX = "购买数据:";
+    private static final String ORDER_ADMIN_GRANT_PREFIX = "管理员授权购买:";
+    private static final String ORDER_SALE_INCOME_PREFIX = "数据销售收入:";
+    private static final String ORDER_ADMIN_REFUND_PREFIX = "管理员申诉退款:";
+    private static final String ORDER_TASK_ACCEPT_PREFIX = "承接任务记录:";
+    private static final String ORDER_TASK_PAYOUT_PREFIX = "任务结算支出:";
+    private static final String ORDER_TASK_INCOME_PREFIX = "任务结算收入:";
+    private static final String ORDER_AI_PROCESS_PREFIX = "AI数据处理:";
 
     @Autowired
     private OrderMapper orderMapper;
@@ -56,12 +56,12 @@ public class OrderService {
 
     private Result<String> createOrderInternal(Order order, boolean allowNegative) {
         if (order == null || order.getBuyerId() == null) {
-            return Result.error("\u53c2\u6570\u9519\u8bef");
+            return Result.error("用户不存在");
         }
 
         User buyer = userMapper.findById(order.getBuyerId());
         if (buyer == null) {
-            return Result.error("\u7528\u6237\u4e0d\u5b58\u5728");
+            return Result.error("用户不存在");
         }
 
         DataProduct product = null;
@@ -74,14 +74,14 @@ public class OrderService {
 
         if (isDataPurchase) {
             if (product == null) {
-                return Result.error("\u6570\u636e\u4e0d\u5b58\u5728");
+                return Result.error("数据不存在");
             }
             if (product.getAuthorId() != null && product.getAuthorId().equals(order.getBuyerId())) {
-                return Result.error("\u4e0d\u80fd\u8d2d\u4e70\u81ea\u5df1\u7684\u6570\u636e");
+                return Result.error("不能购买自己的数据");
             }
             int existed = orderMapper.countPurchasedByUserAndProduct(order.getBuyerId(), order.getProductId());
             if (existed > 0) {
-                return Result.error("\u8be5\u6570\u636e\u5df2\u8d2d\u4e70");
+                return Result.error("该数据已购买");
             }
         }
 
@@ -89,7 +89,7 @@ public class OrderService {
         int current = buyer.getPoints() == null ? 0 : buyer.getPoints();
         int next = current + amount;
         if (!allowNegative && next < 0) {
-            return Result.error("\u79ef\u5206\u4e0d\u8db3");
+            return Result.error("积分不足");
         }
 
         order.setOrderNo(newOrderNo());
@@ -108,23 +108,23 @@ public class OrderService {
     @Transactional
     public Result<String> adminSetPurchaseStatus(Long buyerId, Long productId, Boolean purchased) {
         if (buyerId == null || productId == null || purchased == null) {
-            return Result.error("\u53c2\u6570\u9519\u8bef");
+            return Result.error("参数错误");
         }
 
         User user = userMapper.findById(buyerId);
         if (user == null) {
-            return Result.error("\u7528\u6237\u4e0d\u5b58\u5728");
+            return Result.error("用户不存在");
         }
 
         DataProduct product = dataProductMapper.findById(productId);
         if (product == null) {
-            return Result.error("\u6570\u636e\u4e0d\u5b58\u5728");
+            return Result.error("数据不存在");
         }
 
         if (Boolean.TRUE.equals(purchased)) {
             int existed = orderMapper.countPurchasedByUserAndProduct(buyerId, productId);
             if (existed > 0 || (product.getAuthorId() != null && product.getAuthorId().equals(buyerId))) {
-                return Result.success("\u72b6\u6001\u672a\u53d8\u5316");
+                return Result.success("状态未变化");
             }
 
             Order grantOrder = new Order();
@@ -135,13 +135,13 @@ public class OrderService {
             grantOrder.setAmount(0);
             grantOrder.setStatus(1);
             orderMapper.insert(grantOrder);
-            return Result.success("\u5df2\u4fee\u6539\u4e3a\u5df2\u8d2d\u4e70");
+            return Result.success("已修改为已购买");
         }
 
         Integer sumAmount = orderMapper.sumActivePurchaseAmountByUserAndProduct(buyerId, productId);
         int affected = orderMapper.deactivatePurchaseByUserAndProduct(buyerId, productId);
         if (affected <= 0) {
-            return Result.success("\u72b6\u6001\u672a\u53d8\u5316");
+            return Result.success("状态未变化");
         }
 
         int paidAmount = sumAmount == null ? 0 : sumAmount;
@@ -160,9 +160,9 @@ public class OrderService {
 
         rollbackSellerIncomeForPurchase(product, buyerId);
         if (refund > 0) {
-            return Result.success("\u5df2\u4fee\u6539\u4e3a\u672a\u8d2d\u4e70\uff0c\u5df2\u9000\u56de" + refund + "\u79ef\u5206");
+            return Result.success("已修改为未购买，已退回" + refund + "积分");
         }
-        return Result.success("\u5df2\u4fee\u6539\u4e3a\u672a\u8d2d\u4e70");
+        return Result.success("已修改为未购买");
     }
 
     private boolean isDataPurchaseOrder(Order order, DataProduct product, String orderName) {
@@ -261,7 +261,7 @@ public class OrderService {
 
     private String safeProductName(DataProduct product) {
         String name = product.getName();
-        return (name == null || name.trim().isEmpty()) ? "\u6570\u636e" : name.trim();
+        return (name == null || name.trim().isEmpty()) ? "数据" : name.trim();
     }
 
     private String newOrderNo() {
