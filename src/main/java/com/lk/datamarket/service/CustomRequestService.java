@@ -192,11 +192,23 @@ public class CustomRequestService {
         if (request == null) return;
         if (request.getPublisherId() != null) {
             User publisher = userMapper.findById(request.getPublisherId());
-            request.setPublisherEmail(publisher == null ? "" : publisher.getEmail());
+            if (publisher != null) {
+                // 始终回填最新用户名，避免历史快照名不更新
+                request.setPublisherName(publisher.getName());
+                request.setPublisherEmail(publisher.getEmail());
+            } else {
+                request.setPublisherEmail("");
+            }
         }
         if (request.getAcceptorId() != null) {
             User acceptor = userMapper.findById(request.getAcceptorId());
-            request.setAcceptorEmail(acceptor == null ? "" : acceptor.getEmail());
+            if (acceptor != null) {
+                // 始终回填最新用户名，避免历史快照名不更新
+                request.setAcceptorName(acceptor.getName());
+                request.setAcceptorEmail(acceptor.getEmail());
+            } else {
+                request.setAcceptorEmail("");
+            }
         }
     }
 

@@ -3,9 +3,11 @@ package com.lk.datamarket.service;
 import com.lk.datamarket.common.Result;
 import com.lk.datamarket.domain.DataProduct;
 import com.lk.datamarket.domain.ProductUserAction;
+import com.lk.datamarket.domain.User;
 import com.lk.datamarket.domain.dto.ProductQueryRequest;
 import com.lk.datamarket.mapper.DataProductMapper;
 import com.lk.datamarket.mapper.ProductUserActionMapper;
+import com.lk.datamarket.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +24,9 @@ public class DataProductService {
 
     @Autowired
     private ProductUserActionMapper productUserActionMapper;
+
+    @Autowired
+    private UserMapper userMapper;
 
     @PostConstruct
     public void initProductActionTable() {
@@ -49,6 +54,7 @@ public class DataProductService {
                 limit
         );
 
+        enrichAuthorNames(products);
         enrichUserActions(products, request.getUserId());
 
         int total = dataProductMapper.countByCondition(
@@ -82,6 +88,7 @@ public class DataProductService {
 
     public Result<List<DataProduct>> getPendingReviews() {
         List<DataProduct> products = dataProductMapper.findPendingReviews();
+        enrichAuthorNames(products);
         return Result.success(products);
     }
 
@@ -90,18 +97,21 @@ public class DataProductService {
         if (product == null) {
             return Result.error("?????");
         }
+        enrichAuthorName(product);
         enrichUserAction(product, userId);
         return Result.success(product);
     }
 
     public Result<List<DataProduct>> getUserProducts(Long userId) {
         List<DataProduct> products = dataProductMapper.findApprovedByAuthorId(userId);
+        enrichAuthorNames(products);
         enrichUserActions(products, userId);
         return Result.success(products);
     }
 
     public Result<List<DataProduct>> getFavoriteProducts(Long userId) {
         List<DataProduct> products = dataProductMapper.findFavoritedByUserId(userId);
+        enrichAuthorNames(products);
         enrichUserActions(products, userId);
         return Result.success(products);
     }
@@ -167,8 +177,27 @@ public class DataProductService {
 
         product.setLikes(likes);
         product.setStars(stars);
+        enrichAuthorName(product);
         enrichUserAction(product, userId);
         return product;
+    }
+
+    private void enrichAuthorNames(List<DataProduct> products) {
+        if (products == null) return;
+        for (DataProduct product : products) {
+            enrichAuthorName(product);
+        }
+    }
+
+    private void enrichAuthorName(DataProduct product) {
+        if (product == null || product.getAuthorId() == null) return;
+        User user = userMapper.findById(product.getAuthorId());
+        if (user == null) return;
+        String latestName = user.getName();
+        if (latestName == null) return;
+        String trimName = latestName.trim();
+        if (trimName.isEmpty()) return;
+        product.setAuthorName(trimName);
     }
 
     private void enrichUserActions(List<DataProduct> products, Long userId) {
