@@ -1,6 +1,10 @@
 spring:
   application:
     name: DataMarket
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 120MB
   datasource:
     url: jdbc:mysql://localhost:3306/data_market
     username: root

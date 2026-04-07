@@ -9,17 +9,28 @@ import com.lk.datamarket.mapper.OrderMapper;
 import com.lk.datamarket.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
 
 @Service
 public class OrderService {
+    private static final String ORDER_PURCHASE_PREFIX = "\u8d2d\u4e70\u6570\u636e:";
+    private static final String ORDER_ADMIN_GRANT_PREFIX = "\u7ba1\u7406\u5458\u6388\u6743\u8d2d\u4e70:";
+    private static final String ORDER_SALE_INCOME_PREFIX = "\u6570\u636e\u9500\u552e\u6536\u5165:";
+    private static final String ORDER_ADMIN_REFUND_PREFIX = "\u7ba1\u7406\u5458\u7533\u8bc9\u9000\u6b3e:";
+    private static final String ORDER_TASK_ACCEPT_PREFIX = "\u627f\u63a5\u4efb\u52a1\u8bb0\u5f55:";
+    private static final String ORDER_TASK_PAYOUT_PREFIX = "\u4efb\u52a1\u7ed3\u7b97\u652f\u51fa:";
+    private static final String ORDER_TASK_INCOME_PREFIX = "\u4efb\u52a1\u7ed3\u7b97\u6536\u5165:";
+    private static final String ORDER_AI_PROCESS_PREFIX = "AI\u6570\u636e\u5904\u7406:";
+
     @Autowired
     private OrderMapper orderMapper;
 
     @Autowired
     private UserMapper userMapper;
+
     @Autowired
     private DataProductMapper dataProductMapper;
 
@@ -33,73 +44,227 @@ public class OrderService {
         return Result.success(orders);
     }
 
+    @Transactional
     public Result<String> createOrder(Order order) {
         return createOrderInternal(order, false);
     }
 
+    @Transactional
     public Result<String> createOrderAllowNegative(Order order) {
         return createOrderInternal(order, true);
     }
 
     private Result<String> createOrderInternal(Order order, boolean allowNegative) {
         if (order == null || order.getBuyerId() == null) {
-            return Result.error("参数错误");
+            return Result.error("\u53c2\u6570\u9519\u8bef");
         }
-        User user = userMapper.findById(order.getBuyerId());
-        if (user == null) {
-            return Result.error("用户不存在");
+
+        User buyer = userMapper.findById(order.getBuyerId());
+        if (buyer == null) {
+            return Result.error("\u7528\u6237\u4e0d\u5b58\u5728");
+        }
+
+        DataProduct product = null;
+        if (order.getProductId() != null && order.getProductId() > 0) {
+            product = dataProductMapper.findById(order.getProductId());
+        }
+
+        String orderName = order.getProductName() == null ? "" : order.getProductName().trim();
+        boolean isDataPurchase = isDataPurchaseOrder(order, product, orderName);
+
+        if (isDataPurchase) {
+            if (product == null) {
+                return Result.error("\u6570\u636e\u4e0d\u5b58\u5728");
+            }
+            if (product.getAuthorId() != null && product.getAuthorId().equals(order.getBuyerId())) {
+                return Result.error("\u4e0d\u80fd\u8d2d\u4e70\u81ea\u5df1\u7684\u6570\u636e");
+            }
+            int existed = orderMapper.countPurchasedByUserAndProduct(order.getBuyerId(), order.getProductId());
+            if (existed > 0) {
+                return Result.error("\u8be5\u6570\u636e\u5df2\u8d2d\u4e70");
+            }
         }
 
         int amount = order.getAmount() == null ? 0 : order.getAmount();
-        int current = user.getPoints() == null ? 0 : user.getPoints();
+        int current = buyer.getPoints() == null ? 0 : buyer.getPoints();
         int next = current + amount;
         if (!allowNegative && next < 0) {
-            return Result.error("积分不足");
+            return Result.error("\u79ef\u5206\u4e0d\u8db3");
         }
 
-        order.setOrderNo(UUID.randomUUID().toString().replace("-", "").substring(0, 16));
+        order.setOrderNo(newOrderNo());
         order.setStatus(1);
         orderMapper.insert(order);
 
-        user.setPoints(next);
-        userMapper.update(user);
-        return Result.success("交易成功");
+        buyer.setPoints(next);
+        userMapper.update(buyer);
+
+        if (isDataPurchase && product != null) {
+            syncSellerIncomeForPurchase(product, order.getBuyerId(), amount, orderName);
+        }
+        return Result.success(order.getOrderNo());
     }
 
+    @Transactional
     public Result<String> adminSetPurchaseStatus(Long buyerId, Long productId, Boolean purchased) {
         if (buyerId == null || productId == null || purchased == null) {
-            return Result.error("参数错误");
+            return Result.error("\u53c2\u6570\u9519\u8bef");
         }
 
         User user = userMapper.findById(buyerId);
         if (user == null) {
-            return Result.error("用户不存在");
+            return Result.error("\u7528\u6237\u4e0d\u5b58\u5728");
         }
+
         DataProduct product = dataProductMapper.findById(productId);
         if (product == null) {
-            return Result.error("数据不存在");
+            return Result.error("\u6570\u636e\u4e0d\u5b58\u5728");
         }
 
         if (Boolean.TRUE.equals(purchased)) {
             int existed = orderMapper.countPurchasedByUserAndProduct(buyerId, productId);
             if (existed > 0 || (product.getAuthorId() != null && product.getAuthorId().equals(buyerId))) {
-                return Result.success("状态未变化");
+                return Result.success("\u72b6\u6001\u672a\u53d8\u5316");
             }
+
             Order grantOrder = new Order();
-            grantOrder.setOrderNo(UUID.randomUUID().toString().replace("-", "").substring(0, 16));
+            grantOrder.setOrderNo(newOrderNo());
             grantOrder.setBuyerId(buyerId);
             grantOrder.setProductId(productId);
-            grantOrder.setProductName("管理员授权购买:" + (product.getName() == null ? "数据" : product.getName()));
+            grantOrder.setProductName(ORDER_ADMIN_GRANT_PREFIX + safeProductName(product));
             grantOrder.setAmount(0);
             grantOrder.setStatus(1);
             orderMapper.insert(grantOrder);
-            return Result.success("已修改为已购买");
+            return Result.success("\u5df2\u4fee\u6539\u4e3a\u5df2\u8d2d\u4e70");
         }
 
+        Integer sumAmount = orderMapper.sumActivePurchaseAmountByUserAndProduct(buyerId, productId);
         int affected = orderMapper.deactivatePurchaseByUserAndProduct(buyerId, productId);
         if (affected <= 0) {
-            return Result.success("状态未变化");
+            return Result.success("\u72b6\u6001\u672a\u53d8\u5316");
         }
-        return Result.success("已修改为未购买");
+
+        int paidAmount = sumAmount == null ? 0 : sumAmount;
+        int refund = Math.max(0, -paidAmount);
+        if (refund > 0) {
+            Order refundOrder = new Order();
+            refundOrder.setBuyerId(buyerId);
+            refundOrder.setProductId(productId);
+            refundOrder.setProductName(ORDER_ADMIN_REFUND_PREFIX + safeProductName(product));
+            refundOrder.setAmount(refund);
+            Result<String> refundResult = createOrderInternal(refundOrder, true);
+            if (refundResult.getCode() != 200) {
+                return Result.error(refundResult.getMessage());
+            }
+        }
+
+        rollbackSellerIncomeForPurchase(product, buyerId);
+        if (refund > 0) {
+            return Result.success("\u5df2\u4fee\u6539\u4e3a\u672a\u8d2d\u4e70\uff0c\u5df2\u9000\u56de" + refund + "\u79ef\u5206");
+        }
+        return Result.success("\u5df2\u4fee\u6539\u4e3a\u672a\u8d2d\u4e70");
+    }
+
+    private boolean isDataPurchaseOrder(Order order, DataProduct product, String orderName) {
+        if (order.getProductId() == null || order.getProductId() <= 0) {
+            return false;
+        }
+        if (product == null) {
+            return false;
+        }
+        if (orderName.startsWith(ORDER_PURCHASE_PREFIX) || orderName.startsWith(ORDER_ADMIN_GRANT_PREFIX)) {
+            return true;
+        }
+
+        int amount = order.getAmount() == null ? 0 : order.getAmount();
+        if (amount >= 0) {
+            return false;
+        }
+
+        if (orderName.startsWith(ORDER_TASK_ACCEPT_PREFIX)
+                || orderName.startsWith(ORDER_TASK_PAYOUT_PREFIX)
+                || orderName.startsWith(ORDER_TASK_INCOME_PREFIX)
+                || orderName.startsWith(ORDER_AI_PROCESS_PREFIX)
+                || orderName.startsWith(ORDER_SALE_INCOME_PREFIX)
+                || orderName.startsWith(ORDER_ADMIN_REFUND_PREFIX)) {
+            return false;
+        }
+        return true;
+    }
+
+    private void syncSellerIncomeForPurchase(DataProduct product, Long buyerId, int buyerAmount, String orderName) {
+        Long sellerId = product.getAuthorId();
+        if (sellerId == null || sellerId.equals(buyerId)) {
+            return;
+        }
+
+        int income = Math.max(0, -buyerAmount);
+        if (income <= 0) {
+            return;
+        }
+
+        User seller = userMapper.findById(sellerId);
+        if (seller == null) {
+            return;
+        }
+
+        Order sellerIncomeOrder = new Order();
+        sellerIncomeOrder.setOrderNo(newOrderNo());
+        sellerIncomeOrder.setBuyerId(sellerId);
+        sellerIncomeOrder.setProductId(product.getId());
+        sellerIncomeOrder.setProductName(buildSaleIncomeOrderName(orderName, buyerId, product));
+        sellerIncomeOrder.setAmount(income);
+        sellerIncomeOrder.setStatus(1);
+        orderMapper.insert(sellerIncomeOrder);
+
+        int sellerCurrent = seller.getPoints() == null ? 0 : seller.getPoints();
+        seller.setPoints(sellerCurrent + income);
+        userMapper.update(seller);
+    }
+
+    private void rollbackSellerIncomeForPurchase(DataProduct product, Long purchaseBuyerId) {
+        Long sellerId = product.getAuthorId();
+        if (sellerId == null || sellerId.equals(purchaseBuyerId)) {
+            return;
+        }
+
+        User seller = userMapper.findById(sellerId);
+        if (seller == null) {
+            return;
+        }
+
+        Integer incomeSum = orderMapper.sumActiveSaleIncomeBySellerAndProduct(sellerId, product.getId(), purchaseBuyerId);
+        int affected = orderMapper.deactivateSaleIncomeBySellerAndProduct(sellerId, product.getId(), purchaseBuyerId);
+        if (affected <= 0) {
+            return;
+        }
+
+        int income = incomeSum == null ? 0 : incomeSum;
+        if (income <= 0) {
+            return;
+        }
+        int sellerCurrent = seller.getPoints() == null ? 0 : seller.getPoints();
+        seller.setPoints(sellerCurrent - income);
+        userMapper.update(seller);
+    }
+
+    private String buildSaleIncomeOrderName(String purchaseOrderName, Long purchaseBuyerId, DataProduct product) {
+        String productName = safeProductName(product);
+        if (purchaseOrderName != null && purchaseOrderName.trim().startsWith(ORDER_PURCHASE_PREFIX)) {
+            productName = purchaseOrderName.trim().substring(ORDER_PURCHASE_PREFIX.length()).trim();
+            if (productName.isEmpty()) {
+                productName = safeProductName(product);
+            }
+        }
+        return ORDER_SALE_INCOME_PREFIX + productName + "[buyerId=" + purchaseBuyerId + "]";
+    }
+
+    private String safeProductName(DataProduct product) {
+        String name = product.getName();
+        return (name == null || name.trim().isEmpty()) ? "\u6570\u636e" : name.trim();
+    }
+
+    private String newOrderNo() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
 }
