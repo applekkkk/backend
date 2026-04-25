@@ -78,12 +78,12 @@ public class DataProductService {
         product.setUploadDate(LocalDate.now());
         product.setReviewStatus(0);
         dataProductMapper.insert(product);
-        return Result.success("?????????");
+        return Result.success("创建成功");
     }
 
     public Result<String> approveProduct(Long id, Integer status) {
         dataProductMapper.updateReviewStatus(id, status);
-        return Result.success(status == 1 ? "????" : "???");
+        return Result.success(status == 1 ? "成功" : "失败");
     }
 
     public Result<List<DataProduct>> getPendingReviews() {
@@ -95,7 +95,7 @@ public class DataProductService {
     public Result<DataProduct> getProductById(Long id, Long userId) {
         DataProduct product = dataProductMapper.findById(id);
         if (product == null) {
-            return Result.error("?????");
+            return Result.error("无此数据商品");
         }
         enrichAuthorName(product);
         enrichUserAction(product, userId);
@@ -119,7 +119,7 @@ public class DataProductService {
     public Result<String> updateStats(Long id, DataProduct payload) {
         DataProduct existing = dataProductMapper.findById(id);
         if (existing == null) {
-            return Result.error("?????");
+            return Result.error("该数据商品不存在");
         }
         DataProduct update = new DataProduct();
         update.setId(id);
@@ -127,16 +127,16 @@ public class DataProductService {
         update.setStars(payload.getStars() == null ? safeInt(existing.getStars()) : payload.getStars());
         update.setDownloads(payload.getDownloads() == null ? safeInt(existing.getDownloads()) : payload.getDownloads());
         dataProductMapper.updateStats(update);
-        return Result.success("????");
+        return Result.success("成功");
     }
 
     public Result<DataProduct> setLike(Long id, Long userId, Boolean liked) {
         if (id == null || userId == null) {
-            return Result.error("????");
+            return Result.error("成功");
         }
         DataProduct product = dataProductMapper.findById(id);
         if (product == null) {
-            return Result.error("?????");
+            return Result.error("该数据商品不存在");
         }
 
         ProductUserAction current = productUserActionMapper.findByProductAndUser(id, userId);
@@ -149,11 +149,11 @@ public class DataProductService {
 
     public Result<DataProduct> setFavorite(Long id, Long userId, Boolean favorited) {
         if (id == null || userId == null) {
-            return Result.error("????");
+            return Result.error("无此用户");
         }
         DataProduct product = dataProductMapper.findById(id);
         if (product == null) {
-            return Result.error("?????");
+            return Result.error("无此数据商品");
         }
 
         ProductUserAction current = productUserActionMapper.findByProductAndUser(id, userId);
