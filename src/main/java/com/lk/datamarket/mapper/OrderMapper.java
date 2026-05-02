@@ -23,17 +23,17 @@ public interface OrderMapper {
 
     @Select("SELECT COUNT(1) FROM orders " +
             "WHERE buyer_id = #{buyerId} AND product_id = #{productId} AND status = 1 " +
-            "AND (product_name LIKE '\u8d2d\u4e70\u6570\u636e:%' OR product_name LIKE '\u7ba1\u7406\u5458\u6388\u6743\u8d2d\u4e70:%')")
+            "AND (product_name LIKE '购买数据:%' OR product_name LIKE '管理员授权购买:%')")
     int countPurchasedByUserAndProduct(@Param("buyerId") Long buyerId, @Param("productId") Long productId);
 
     @Select("SELECT COALESCE(SUM(amount), 0) FROM orders " +
             "WHERE buyer_id = #{buyerId} AND product_id = #{productId} AND status = 1 " +
-            "AND (product_name LIKE '\u8d2d\u4e70\u6570\u636e:%' OR product_name LIKE '\u7ba1\u7406\u5458\u6388\u6743\u8d2d\u4e70:%')")
+            "AND (product_name LIKE '购买数据:%' OR product_name LIKE '管理员授权购买:%')")
     Integer sumActivePurchaseAmountByUserAndProduct(@Param("buyerId") Long buyerId, @Param("productId") Long productId);
 
     @Select("SELECT COALESCE(SUM(amount), 0) FROM orders " +
             "WHERE buyer_id = #{sellerId} AND product_id = #{productId} AND status = 1 " +
-            "AND product_name LIKE CONCAT('\u6570\u636e\u9500\u552e\u6536\u5165:%[buyerId=', #{purchaseBuyerId}, ']%')")
+            "AND product_name LIKE CONCAT('数据销售收入:%[buyerId=', #{purchaseBuyerId}, ']%')")
     Integer sumActiveSaleIncomeBySellerAndProduct(@Param("sellerId") Long sellerId,
                                                    @Param("productId") Long productId,
                                                    @Param("purchaseBuyerId") Long purchaseBuyerId);
@@ -45,12 +45,12 @@ public interface OrderMapper {
 
     @Update("UPDATE orders SET status = 0 " +
             "WHERE buyer_id = #{buyerId} AND product_id = #{productId} AND status = 1 " +
-            "AND (product_name LIKE '\u8d2d\u4e70\u6570\u636e:%' OR product_name LIKE '\u7ba1\u7406\u5458\u6388\u6743\u8d2d\u4e70:%')")
+            "AND (product_name LIKE '购买数据:%' OR product_name LIKE '管理员授权购买:%')")
     int deactivatePurchaseByUserAndProduct(@Param("buyerId") Long buyerId, @Param("productId") Long productId);
 
     @Update("UPDATE orders SET status = 0 " +
             "WHERE buyer_id = #{sellerId} AND product_id = #{productId} AND status = 1 " +
-            "AND product_name LIKE CONCAT('\u6570\u636e\u9500\u552e\u6536\u5165:%[buyerId=', #{purchaseBuyerId}, ']%')")
+            "AND product_name LIKE CONCAT('数据销售收入:%[buyerId=', #{purchaseBuyerId}, ']%')")
     int deactivateSaleIncomeBySellerAndProduct(@Param("sellerId") Long sellerId,
                                                 @Param("productId") Long productId,
                                                 @Param("purchaseBuyerId") Long purchaseBuyerId);

@@ -60,7 +60,7 @@ public class UserService {
         User user = userMapper.findByUsername(username);
         if (user == null) return Result.error("用户不存在");
         if (!passwordEncoder.matches(password, user.getPassword())) return Result.error("密码错误");
-
+        if(user.getStatus()==2) return Result.error("用户已封禁");
         Map<String, Object> claims = new HashMap<>();
         claims.put("id", user.getId());
         claims.put("username", user.getUsername());
