@@ -26,6 +26,16 @@ public class OrderController {
         return orderService.getAllOrders();
     }
 
+    @GetMapping("/purchased")
+    public Result<Boolean> hasPurchased(@RequestParam Long buyerId, @RequestParam Long productId) {
+        return orderService.hasPurchased(buyerId, productId);
+    }
+
+    @GetMapping("/purchased-products/{buyerId}")
+    public Result<List<Long>> getPurchasedProductIds(@PathVariable Long buyerId) {
+        return orderService.getPurchasedProductIds(buyerId);
+    }
+
     @PostMapping
     public Result<String> createOrder(@RequestBody Order order) {
         log.info("create order: {}", order.getProductName());

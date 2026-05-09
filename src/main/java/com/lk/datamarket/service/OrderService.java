@@ -4,6 +4,7 @@ import com.lk.datamarket.common.Result;
 import com.lk.datamarket.domain.DataProduct;
 import com.lk.datamarket.domain.Order;
 import com.lk.datamarket.domain.User;
+import com.lk.datamarket.mapper.DataBuyMapper;
 import com.lk.datamarket.mapper.DataProductMapper;
 import com.lk.datamarket.mapper.OrderMapper;
 import com.lk.datamarket.mapper.UserMapper;
@@ -11,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.annotation.PostConstruct;
 import java.util.List;
 import java.util.UUID;
 
@@ -27,21 +29,54 @@ public class OrderService {
 
     @Autowired
     private OrderMapper orderMapper;
-
     @Autowired
     private UserMapper userMapper;
-
     @Autowired
     private DataProductMapper dataProductMapper;
+    @Autowired
+    private DataBuyMapper dataBuyMapper;
+
+    @PostConstruct
+    public void initDataBuyTable() {
+        dataBuyMapper.ensureTable();
+        if (dataBuyMapper.hasCreatedTimeColumn() == 0) {
+            dataBuyMapper.addCreatedTimeColumn();
+        }
+        if (dataBuyMapper.hasUpdatedTimeColumn() == 0) {
+            dataBuyMapper.addUpdatedTimeColumn();
+        }
+        dataBuyMapper.fillCreatedTimeIfNull();
+        dataBuyMapper.fillUpdatedTimeIfNull();
+        dataBuyMapper.backfillFromOrders();
+    }
 
     public Result<List<Order>> getUserOrders(Long buyerId) {
-        List<Order> orders = orderMapper.findByBuyerId(buyerId);
-        return Result.success(orders);
+        return Result.success(orderMapper.findByBuyerId(buyerId));
     }
 
     public Result<List<Order>> getAllOrders() {
-        List<Order> orders = orderMapper.findAll();
-        return Result.success(orders);
+        return Result.success(orderMapper.findAll());
+    }
+
+    public Result<Boolean> hasPurchased(Long buyerId, Long productId) {
+        if (buyerId == null || productId == null) {
+            return Result.error("参数错误");
+        }
+        DataProduct product = dataProductMapper.findById(productId);
+        if (product == null) {
+            return Result.error("数据不存在");
+        }
+        if (product.getAuthorId() != null && product.getAuthorId().equals(buyerId)) {
+            return Result.success(true);
+        }
+        return Result.success(dataBuyMapper.countByBuyerAndProduct(buyerId, productId) > 0);
+    }
+
+    public Result<List<Long>> getPurchasedProductIds(Long buyerId) {
+        if (buyerId == null) {
+            return Result.error("参数错误");
+        }
+        return Result.success(dataBuyMapper.listPurchasedProductIdsByBuyerId(buyerId));
     }
 
     @Transactional
@@ -58,7 +93,6 @@ public class OrderService {
         if (order == null || order.getBuyerId() == null) {
             return Result.error("用户不存在");
         }
-
         User buyer = userMapper.findById(order.getBuyerId());
         if (buyer == null) {
             return Result.error("用户不存在");
@@ -79,8 +113,7 @@ public class OrderService {
             if (product.getAuthorId() != null && product.getAuthorId().equals(order.getBuyerId())) {
                 return Result.error("不能购买自己的数据");
             }
-            int existed = orderMapper.countPurchasedByUserAndProduct(order.getBuyerId(), order.getProductId());
-            if (existed > 0) {
+            if (dataBuyMapper.countByBuyerAndProduct(order.getBuyerId(), order.getProductId()) > 0) {
                 return Result.error("该数据已购买");
             }
         }
@@ -95,6 +128,9 @@ public class OrderService {
         order.setOrderNo(newOrderNo());
         order.setStatus(1);
         orderMapper.insert(order);
+        if (isDataPurchase) {
+            dataBuyMapper.insertIgnore(order.getBuyerId(), order.getProductId());
+        }
 
         buyer.setPoints(next);
         userMapper.update(buyer);
@@ -110,23 +146,20 @@ public class OrderService {
         if (buyerId == null || productId == null || purchased == null) {
             return Result.error("参数错误");
         }
-
         User user = userMapper.findById(buyerId);
         if (user == null) {
             return Result.error("用户不存在");
         }
-
         DataProduct product = dataProductMapper.findById(productId);
         if (product == null) {
             return Result.error("数据不存在");
         }
 
         if (Boolean.TRUE.equals(purchased)) {
-            int existed = orderMapper.countPurchasedByUserAndProduct(buyerId, productId);
+            int existed = dataBuyMapper.countByBuyerAndProduct(buyerId, productId);
             if (existed > 0 || (product.getAuthorId() != null && product.getAuthorId().equals(buyerId))) {
                 return Result.success("状态未变化");
             }
-
             Order grantOrder = new Order();
             grantOrder.setOrderNo(newOrderNo());
             grantOrder.setBuyerId(buyerId);
@@ -135,9 +168,11 @@ public class OrderService {
             grantOrder.setAmount(0);
             grantOrder.setStatus(1);
             orderMapper.insert(grantOrder);
+            dataBuyMapper.insertIgnore(buyerId, productId);
             return Result.success("已修改为已购买");
         }
 
+        dataBuyMapper.deleteByBuyerAndProduct(buyerId, productId);
         Integer sumAmount = orderMapper.sumActivePurchaseAmountByUserAndProduct(buyerId, productId);
         int affected = orderMapper.deactivatePurchaseByUserAndProduct(buyerId, productId);
         if (affected <= 0) {
@@ -159,17 +194,13 @@ public class OrderService {
         }
 
         rollbackSellerIncomeForPurchase(product, buyerId);
-        if (refund > 0) {
-            return Result.success("已修改为未购买，已退回" + refund + "积分");
-        }
-        return Result.success("已修改为未购买");
+        return refund > 0
+                ? Result.success("已修改为未购买，已退回" + refund + "积分")
+                : Result.success("已修改为未购买");
     }
 
     private boolean isDataPurchaseOrder(Order order, DataProduct product, String orderName) {
-        if (order.getProductId() == null || order.getProductId() <= 0) {
-            return false;
-        }
-        if (product == null) {
+        if (order.getProductId() == null || order.getProductId() <= 0 || product == null) {
             return false;
         }
         if (orderName.startsWith(ORDER_PURCHASE_PREFIX) || orderName.startsWith(ORDER_ADMIN_GRANT_PREFIX)) {
@@ -180,16 +211,12 @@ public class OrderService {
         if (amount >= 0) {
             return false;
         }
-
-        if (orderName.startsWith(ORDER_TASK_ACCEPT_PREFIX)
+        return !(orderName.startsWith(ORDER_TASK_ACCEPT_PREFIX)
                 || orderName.startsWith(ORDER_TASK_PAYOUT_PREFIX)
                 || orderName.startsWith(ORDER_TASK_INCOME_PREFIX)
                 || orderName.startsWith(ORDER_AI_PROCESS_PREFIX)
                 || orderName.startsWith(ORDER_SALE_INCOME_PREFIX)
-                || orderName.startsWith(ORDER_ADMIN_REFUND_PREFIX)) {
-            return false;
-        }
-        return true;
+                || orderName.startsWith(ORDER_ADMIN_REFUND_PREFIX));
     }
 
     private void syncSellerIncomeForPurchase(DataProduct product, Long buyerId, int buyerAmount, String orderName) {
@@ -197,12 +224,10 @@ public class OrderService {
         if (sellerId == null || sellerId.equals(buyerId)) {
             return;
         }
-
         int income = Math.max(0, -buyerAmount);
         if (income <= 0) {
             return;
         }
-
         User seller = userMapper.findById(sellerId);
         if (seller == null) {
             return;
@@ -227,7 +252,6 @@ public class OrderService {
         if (sellerId == null || sellerId.equals(purchaseBuyerId)) {
             return;
         }
-
         User seller = userMapper.findById(sellerId);
         if (seller == null) {
             return;

@@ -2,14 +2,18 @@ package com.lk.datamarket.service;
 
 import com.lk.datamarket.common.Result;
 import com.lk.datamarket.domain.DataProduct;
-import com.lk.datamarket.domain.ProductUserAction;
+import com.lk.datamarket.domain.ReviewLog;
 import com.lk.datamarket.domain.User;
 import com.lk.datamarket.domain.dto.ProductQueryRequest;
 import com.lk.datamarket.mapper.DataProductMapper;
-import com.lk.datamarket.mapper.ProductUserActionMapper;
+import com.lk.datamarket.mapper.ProductFavoriteMapper;
+import com.lk.datamarket.mapper.ProductLikeMapper;
+import com.lk.datamarket.mapper.ReviewLogMapper;
 import com.lk.datamarket.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import javax.annotation.PostConstruct;
 import java.time.LocalDate;
@@ -23,14 +27,25 @@ public class DataProductService {
     private DataProductMapper dataProductMapper;
 
     @Autowired
-    private ProductUserActionMapper productUserActionMapper;
+    private ProductLikeMapper productLikeMapper;
+
+    @Autowired
+    private ProductFavoriteMapper productFavoriteMapper;
 
     @Autowired
     private UserMapper userMapper;
 
+    @Autowired
+    private ReviewLogMapper reviewLogMapper;
+
+    @Autowired
+    private AdminAttendanceService adminAttendanceService;
+
     @PostConstruct
     public void initProductActionTable() {
-        productUserActionMapper.ensureTable();
+        productLikeMapper.ensureTable();
+        productFavoriteMapper.ensureTable();
+        reviewLogMapper.ensureTable();
     }
 
     public Result<Map<String, Object>> queryProducts(ProductQueryRequest request) {
@@ -81,9 +96,40 @@ public class DataProductService {
         return Result.success("创建成功");
     }
 
-    public Result<String> approveProduct(Long id, Integer status) {
-        dataProductMapper.updateReviewStatus(id, status);
-        return Result.success(status == 1 ? "成功" : "失败");
+    @Transactional(rollbackFor = Exception.class)
+    public Result<String> approveProduct(Long id, Integer status, Long adminId, String remark) {
+        if (id == null || status == null) {
+            return Result.error("参数不能为空");
+        }
+        if (adminId == null) {
+            return Result.error("管理员身份无效");
+        }
+        if (status != 0 && status != 1 && status != 2) {
+            return Result.error("审核状态无效");
+        }
+
+        DataProduct product = dataProductMapper.findById(id);
+        if (product == null) {
+            return Result.error("数据不存在");
+        }
+
+        Integer oldStatus = product.getReviewStatus() == null ? 0 : product.getReviewStatus();
+        int updated = dataProductMapper.updateReviewStatus(id, status);
+        if (updated <= 0) {
+            return Result.error("审核失败");
+        }
+
+        ReviewLog reviewLog = new ReviewLog();
+        reviewLog.setProductId(id);
+        reviewLog.setAdminId(adminId);
+        reviewLog.setOldStatus(oldStatus);
+        reviewLog.setNewStatus(status);
+        reviewLog.setRemark(StringUtils.hasText(remark) ? remark.trim() : "");
+        reviewLogMapper.insert(reviewLog);
+
+        adminAttendanceService.recordReview(adminId);
+
+        return Result.success(status == 1 ? "审核通过" : "审核完成");
     }
 
     public Result<List<DataProduct>> getPendingReviews() {
@@ -132,41 +178,43 @@ public class DataProductService {
 
     public Result<DataProduct> setLike(Long id, Long userId, Boolean liked) {
         if (id == null || userId == null) {
-            return Result.error("成功");
+            return Result.error("参数错误");
         }
         DataProduct product = dataProductMapper.findById(id);
         if (product == null) {
             return Result.error("该数据商品不存在");
         }
 
-        ProductUserAction current = productUserActionMapper.findByProductAndUser(id, userId);
-        int nextLiked = Boolean.TRUE.equals(liked) ? 1 : 0;
-        int favorited = current == null ? 0 : safeInt(current.getFavorited());
-        productUserActionMapper.upsert(id, userId, nextLiked, favorited);
+        if (Boolean.TRUE.equals(liked)) {
+            productLikeMapper.insert(id, userId);
+        } else {
+            productLikeMapper.delete(id, userId);
+        }
 
         return Result.success(recalcAndAttach(product, userId));
     }
 
     public Result<DataProduct> setFavorite(Long id, Long userId, Boolean favorited) {
         if (id == null || userId == null) {
-            return Result.error("无此用户");
+            return Result.error("参数错误");
         }
         DataProduct product = dataProductMapper.findById(id);
         if (product == null) {
             return Result.error("无此数据商品");
         }
 
-        ProductUserAction current = productUserActionMapper.findByProductAndUser(id, userId);
-        int nextFavorited = Boolean.TRUE.equals(favorited) ? 1 : 0;
-        int liked = current == null ? 0 : safeInt(current.getLiked());
-        productUserActionMapper.upsert(id, userId, liked, nextFavorited);
+        if (Boolean.TRUE.equals(favorited)) {
+            productFavoriteMapper.insert(id, userId);
+        } else {
+            productFavoriteMapper.delete(id, userId);
+        }
 
         return Result.success(recalcAndAttach(product, userId));
     }
 
     private DataProduct recalcAndAttach(DataProduct product, Long userId) {
-        int likes = productUserActionMapper.countLikes(product.getId());
-        int stars = productUserActionMapper.countFavorites(product.getId());
+        int likes = productLikeMapper.countLikes(product.getId());
+        int stars = productFavoriteMapper.countFavorites(product.getId());
 
         DataProduct update = new DataProduct();
         update.setId(product.getId());
@@ -183,21 +231,27 @@ public class DataProductService {
     }
 
     private void enrichAuthorNames(List<DataProduct> products) {
-        if (products == null) return;
+        if (products == null) {
+            return;
+        }
         for (DataProduct product : products) {
             enrichAuthorName(product);
         }
     }
 
     private void enrichAuthorName(DataProduct product) {
-        if (product == null || product.getAuthorId() == null) return;
+        if (product == null || product.getAuthorId() == null) {
+            return;
+        }
         User user = userMapper.findById(product.getAuthorId());
-        if (user == null) return;
+        if (user == null) {
+            return;
+        }
         String latestName = user.getName();
-        if (latestName == null) return;
-        String trimName = latestName.trim();
-        if (trimName.isEmpty()) return;
-        product.setAuthorName(trimName);
+        if (!StringUtils.hasText(latestName)) {
+            return;
+        }
+        product.setAuthorName(latestName.trim());
     }
 
     private void enrichUserActions(List<DataProduct> products, Long userId) {
@@ -218,12 +272,8 @@ public class DataProductService {
         if (userId == null) {
             return;
         }
-        ProductUserAction action = productUserActionMapper.findByProductAndUser(product.getId(), userId);
-        if (action == null) {
-            return;
-        }
-        product.setLiked(safeInt(action.getLiked()) == 1);
-        product.setFavorited(safeInt(action.getFavorited()) == 1);
+        product.setLiked(productLikeMapper.exists(product.getId(), userId) > 0);
+        product.setFavorited(productFavoriteMapper.exists(product.getId(), userId) > 0);
     }
 
     private int safeInt(Integer value) {

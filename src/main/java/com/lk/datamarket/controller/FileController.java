@@ -3,8 +3,8 @@ package com.lk.datamarket.controller;
 import com.lk.datamarket.common.Result;
 import com.lk.datamarket.domain.DataProduct;
 import com.lk.datamarket.domain.User;
+import com.lk.datamarket.mapper.DataBuyMapper;
 import com.lk.datamarket.mapper.DataProductMapper;
-import com.lk.datamarket.mapper.OrderMapper;
 import com.lk.datamarket.mapper.UserMapper;
 import com.lk.datamarket.utils.JwtUtil;
 import lombok.Data;
@@ -62,7 +62,7 @@ public class FileController {
     private DataProductMapper dataProductMapper;
 
     @Autowired
-    private OrderMapper orderMapper;
+    private DataBuyMapper dataBuyMapper;
 
     @Autowired
     private UserMapper userMapper;
@@ -263,7 +263,7 @@ public class FileController {
         if (userId.equals(product.getAuthorId())) {
             return true;
         }
-        return orderMapper.countPurchasedByUserAndProduct(userId, product.getId()) > 0;
+        return dataBuyMapper.countByBuyerAndProduct(userId, product.getId()) > 0;
     }
 
     private boolean canPreviewProductFile(HttpServletRequest request, DataProduct product) {

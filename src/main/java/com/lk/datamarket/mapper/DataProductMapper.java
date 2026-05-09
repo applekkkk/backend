@@ -18,8 +18,8 @@ public interface DataProductMapper {
     @Select("SELECT * FROM data_products WHERE review_status = 1 AND author_id = #{authorId} ORDER BY created_at DESC")
     List<DataProduct> findApprovedByAuthorId(@Param("authorId") Long authorId);
 
-    @Select("SELECT p.* FROM data_products p INNER JOIN product_user_actions a ON a.product_id = p.id " +
-            "WHERE p.review_status = 1 AND a.user_id = #{userId} AND a.favorited = 1 ORDER BY a.updated_at DESC")
+    @Select("SELECT p.* FROM data_products p INNER JOIN product_favorites f ON f.product_id = p.id " +
+            "WHERE p.review_status = 1 AND f.user_id = #{userId} ORDER BY p.created_at DESC")
     List<DataProduct> findFavoritedByUserId(@Param("userId") Long userId);
 
     @Select("SELECT * FROM data_products WHERE review_status = 0 ORDER BY created_at DESC")

@@ -3,6 +3,7 @@ package com.lk.datamarket.service;
 import com.lk.datamarket.common.Result;
 import com.lk.datamarket.domain.User;
 import com.lk.datamarket.mapper.CustomRequestMapper;
+import com.lk.datamarket.mapper.SignInRecordMapper;
 import com.lk.datamarket.mapper.UserMapper;
 import com.lk.datamarket.utils.JwtUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +35,12 @@ public class UserService {
     private CustomRequestMapper customRequestMapper;
 
     @Autowired
+    private SignInRecordMapper signInRecordMapper;
+
+    @Autowired
+    private AdminAttendanceService adminAttendanceService;
+
+    @Autowired
     private JavaMailSender mailSender;
 
     @Value("${spring.mail.username}")
@@ -41,9 +48,7 @@ public class UserService {
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
-    // 已登录用户邮箱验证验证码（按 userId）
     private final Map<Long, EmailCodeTicket> emailCodeMap = new ConcurrentHashMap<>();
-    // 注册阶段验证码（按 email）
     private final Map<String, EmailCodeTicket> registerEmailCodeMap = new ConcurrentHashMap<>();
 
     @PostConstruct
@@ -54,17 +59,43 @@ public class UserService {
         if (userMapper.existsEmailVerifiedColumn() == 0) {
             userMapper.addEmailVerifiedColumn();
         }
+        signInRecordMapper.ensureTable();
+        if (signInRecordMapper.existsCreatedAtColumn() == 0) {
+            signInRecordMapper.addCreatedAtColumn();
+        }
+        if (signInRecordMapper.existsSignInDateColumn() == 0) {
+            signInRecordMapper.addSignInDateColumn();
+        }
+        signInRecordMapper.backfillSignInDateFromCreatedAt();
+        signInRecordMapper.makeSignInDateNotNull();
     }
 
     public Result<Map<String, Object>> login(String username, String password) {
         User user = userMapper.findByUsername(username);
-        if (user == null) return Result.error("用户不存在");
-        if (!passwordEncoder.matches(password, user.getPassword())) return Result.error("密码错误");
-        if(user.getStatus()==2) return Result.error("用户已封禁");
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
+        boolean passwordOk = passwordEncoder.matches(password, user.getPassword());
+        // 兼容历史明文密码账号：首次成功登录后自动升级为 BCrypt
+        if (!passwordOk && password != null && password.equals(user.getPassword())) {
+            passwordOk = true;
+            userMapper.updatePassword(user.getId(), passwordEncoder.encode(password));
+        }
+        if (!passwordOk) {
+            return Result.error("密码错误");
+        }
+        if (safeInt(user.getStatus()) == 2) {
+            return Result.error("用户已封禁");
+        }
+
         Map<String, Object> claims = new HashMap<>();
         claims.put("id", user.getId());
         claims.put("username", user.getUsername());
         String token = JwtUtil.genToken(claims);
+
+        if (safeInt(user.getRole()) == 1) {
+            adminAttendanceService.recordLogin(user.getId());
+        }
 
         Map<String, Object> data = new HashMap<>();
         data.put("token", token);
@@ -74,11 +105,15 @@ public class UserService {
         data.put("email", user.getEmail());
         data.put("emailVerified", safeInt(user.getEmailVerified()));
         data.put("status", safeInt(user.getStatus()));
+        data.put("points", safeInt(user.getPoints()));
+        data.put("lastCheckInDate", signInRecordMapper.findLatestSignInDate(user.getId()));
         return Result.success(data);
     }
 
     public Result<String> sendRegisterEmailCode(String email) {
-        if (!isValidEmail(email)) return Result.error("邮箱格式不正确");
+        if (!isValidEmail(email)) {
+            return Result.error("邮箱格式不正确");
+        }
         String normalized = normalizeEmail(email);
         String code = generateCode();
         LocalDateTime expireAt = LocalDateTime.now().plusMinutes(10);
@@ -87,14 +122,24 @@ public class UserService {
     }
 
     public Result<String> register(String username, String password, String email, String emailCode) {
-        if (isBlank(username) || isBlank(password)) return Result.error("用户名和密码不能为空");
-        if (!isValidEmail(email)) return Result.error("邮箱格式不正确");
-        if (isBlank(emailCode)) return Result.error("请输入邮箱验证码");
-        if (userMapper.findByUsername(username) != null) return Result.error("用户名已存在");
+        if (isBlank(username) || isBlank(password)) {
+            return Result.error("用户名和密码不能为空");
+        }
+        if (!isValidEmail(email)) {
+            return Result.error("邮箱格式不正确");
+        }
+        if (isBlank(emailCode)) {
+            return Result.error("请输入邮箱验证码");
+        }
+        if (userMapper.findByUsername(username) != null) {
+            return Result.error("用户名已存在");
+        }
 
         String normalized = normalizeEmail(email);
         EmailCodeTicket ticket = registerEmailCodeMap.get(normalized);
-        if (ticket == null) return Result.error("请先发送邮箱验证码");
+        if (ticket == null) {
+            return Result.error("请先发送邮箱验证码");
+        }
         if (LocalDateTime.now().isAfter(ticket.expireAt)) {
             registerEmailCodeMap.remove(normalized);
             return Result.error("邮箱验证码已过期，请重新发送");
@@ -120,22 +165,39 @@ public class UserService {
 
     public Result<User> getUserById(Long id) {
         User user = userMapper.findById(id);
-        if (user == null) return Result.error("用户不存在");
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
+        user.setLastCheckInDate(signInRecordMapper.findLatestSignInDate(id));
         return Result.success(user);
     }
 
     public Result<List<User>> getAllUsers() {
-        return Result.success(userMapper.findAll());
+        List<User> users = userMapper.findAll();
+        if (users != null) {
+            for (User user : users) {
+                if (user != null && user.getId() != null) {
+                    user.setLastCheckInDate(signInRecordMapper.findLatestSignInDate(user.getId()));
+                }
+            }
+        }
+        return Result.success(users);
     }
 
     public Result<String> updateUser(User user) {
-        if (user == null || user.getId() == null) return Result.error("用户ID不能为空");
+        if (user == null || user.getId() == null) {
+            return Result.error("用户ID不能为空");
+        }
         User existing = userMapper.findById(user.getId());
-        if (existing == null) return Result.error("用户不存在");
+        if (existing == null) {
+            return Result.error("用户不存在");
+        }
 
         if (user.getName() != null) {
             String nextName = user.getName().trim();
-            if (nextName.isEmpty()) return Result.error("用户名不能为空");
+            if (nextName.isEmpty()) {
+                return Result.error("用户名不能为空");
+            }
             if (!nextName.equals(existing.getName()) && userMapper.countByNameExcludeId(nextName, user.getId()) > 0) {
                 return Result.error("用户名已存在");
             }
@@ -147,7 +209,6 @@ public class UserService {
         existing.setBio(defaultStr(user.getBio(), existing.getBio()));
         existing.setPoints(user.getPoints() == null ? existing.getPoints() : user.getPoints());
         existing.setStatus(user.getStatus() == null ? existing.getStatus() : user.getStatus());
-        existing.setLastCheckInDate(user.getLastCheckInDate() == null ? existing.getLastCheckInDate() : user.getLastCheckInDate());
         existing.setEmail(user.getEmail() == null ? existing.getEmail() : user.getEmail());
         existing.setEmailVerified(user.getEmailVerified() == null ? existing.getEmailVerified() : user.getEmailVerified());
         userMapper.update(existing);
@@ -160,10 +221,16 @@ public class UserService {
     }
 
     public Result<String> sendEmailCode(Long userId, String email) {
-        if (userId == null) return Result.error("用户ID不能为空");
-        if (!isValidEmail(email)) return Result.error("邮箱格式不正确");
+        if (userId == null) {
+            return Result.error("用户ID不能为空");
+        }
+        if (!isValidEmail(email)) {
+            return Result.error("邮箱格式不正确");
+        }
         User user = userMapper.findById(userId);
-        if (user == null) return Result.error("用户不存在");
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
 
         String normalized = normalizeEmail(email);
         String code = generateCode();
@@ -173,13 +240,21 @@ public class UserService {
     }
 
     public Result<String> verifyEmail(Long userId, String email, String code) {
-        if (userId == null) return Result.error("用户ID不能为空");
-        if (!isValidEmail(email) || isBlank(code)) return Result.error("邮箱或验证码格式不正确");
+        if (userId == null) {
+            return Result.error("用户ID不能为空");
+        }
+        if (!isValidEmail(email) || isBlank(code)) {
+            return Result.error("邮箱或验证码格式不正确");
+        }
         User user = userMapper.findById(userId);
-        if (user == null) return Result.error("用户不存在");
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
 
         EmailCodeTicket ticket = emailCodeMap.get(userId);
-        if (ticket == null) return Result.error("请先发送验证码");
+        if (ticket == null) {
+            return Result.error("请先发送验证码");
+        }
         if (LocalDateTime.now().isAfter(ticket.expireAt)) {
             emailCodeMap.remove(userId);
             return Result.error("验证码已过期");
@@ -196,18 +271,28 @@ public class UserService {
     }
 
     public Result<String> changePassword(Long userId, String oldPassword, String newPassword) {
-        if (userId == null) return Result.error("用户ID不能为空");
-        if (isBlank(oldPassword) || isBlank(newPassword)) return Result.error("旧密码和新密码不能为空");
+        if (userId == null) {
+            return Result.error("用户ID不能为空");
+        }
+        if (isBlank(oldPassword) || isBlank(newPassword)) {
+            return Result.error("旧密码和新密码不能为空");
+        }
         User user = userMapper.findById(userId);
-        if (user == null) return Result.error("用户不存在");
-        if (!passwordEncoder.matches(oldPassword, user.getPassword())) return Result.error("旧密码不正确");
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
+        if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
+            return Result.error("旧密码不正确");
+        }
         userMapper.updatePassword(userId, passwordEncoder.encode(newPassword));
         return Result.success("密码修改成功");
     }
 
     public Result<String> updatePoints(Long userId, Integer points) {
         User user = userMapper.findById(userId);
-        if (user == null) return Result.error("用户不存在");
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
         user.setPoints(points);
         userMapper.update(user);
         return Result.success("积分更新成功");
@@ -215,11 +300,19 @@ public class UserService {
 
     public Result<String> checkIn(Long userId) {
         User user = userMapper.findById(userId);
-        if (user == null) return Result.error("用户不存在");
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
         LocalDate today = LocalDate.now();
-        if (today.equals(user.getLastCheckInDate())) return Result.error("今日已签到");
+        if (signInRecordMapper.existsByUserAndDate(userId, today) > 0) {
+            return Result.error("今日已签到");
+        }
+        int inserted = signInRecordMapper.insertIgnore(userId, today);
+        if (inserted <= 0) {
+            return Result.error("今日已签到");
+        }
+
         user.setPoints(safeInt(user.getPoints()) + 10);
-        user.setLastCheckInDate(today);
         userMapper.update(user);
         return Result.success("签到成功");
     }
@@ -261,7 +354,9 @@ public class UserService {
     }
 
     private boolean isValidEmail(String email) {
-        if (email == null) return false;
+        if (email == null) {
+            return false;
+        }
         String val = email.trim();
         return !val.isEmpty() && EMAIL_PATTERN.matcher(val).matches();
     }

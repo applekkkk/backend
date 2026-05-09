@@ -26,7 +26,7 @@ public interface UserMapper {
 
     @Update("UPDATE users SET name=#{name}, avatar=#{avatar}, bio=#{bio}, " +
             "email=#{email}, email_verified=#{emailVerified}, points=#{points}, status=#{status}, " +
-            "last_check_in_date=#{lastCheckInDate}, updated_at=NOW() WHERE id=#{id}")
+            "updated_at=NOW() WHERE id=#{id}")
     int update(User user);
 
     @Update("UPDATE users SET password=#{password}, updated_at=NOW() WHERE id=#{id}")

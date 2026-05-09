@@ -7,8 +7,8 @@ import com.lk.datamarket.domain.Order;
 import com.lk.datamarket.domain.TaskAppeal;
 import com.lk.datamarket.domain.User;
 import com.lk.datamarket.mapper.CustomRequestMapper;
+import com.lk.datamarket.mapper.DataBuyMapper;
 import com.lk.datamarket.mapper.DataProductMapper;
-import com.lk.datamarket.mapper.OrderMapper;
 import com.lk.datamarket.mapper.TaskAppealMapper;
 import com.lk.datamarket.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,9 +28,11 @@ public class TaskAppealService {
     @Autowired
     private UserMapper userMapper;
     @Autowired
-    private OrderMapper orderMapper;
+    private DataBuyMapper dataBuyMapper;
     @Autowired
     private OrderService orderService;
+    @Autowired
+    private AdminAttendanceService adminAttendanceService;
 
     @PostConstruct
     public void ensureTable() {
@@ -99,7 +101,7 @@ public class TaskAppealService {
         }
 
         boolean isAuthor = product.getAuthorId() != null && product.getAuthorId().equals(userId);
-        boolean isPurchased = orderMapper.countPurchasedByUserAndProduct(userId, product.getId()) > 0;
+        boolean isPurchased = dataBuyMapper.countByBuyerAndProduct(userId, product.getId()) > 0;
         if (!isAuthor && !isPurchased) {
             return Result.error("仅已购买用户可申诉");
         }
@@ -126,7 +128,7 @@ public class TaskAppealService {
         return Result.success(taskAppealMapper.findAll());
     }
 
-    public Result<String> markProcessed(Long appealId) {
+    public Result<String> markProcessed(Long appealId, Long adminId) {
         TaskAppeal appeal = taskAppealMapper.findById(appealId);
         if (appeal == null) {
             return Result.error("申诉不存在");
@@ -136,10 +138,11 @@ public class TaskAppealService {
             return Result.success("已处理");
         }
         taskAppealMapper.updateStatus(appealId, 1);
+        adminAttendanceService.recordAppeal(adminId);
         return Result.success("处理完成");
     }
 
-    public Result<String> forceSettle(Long appealId) {
+    public Result<String> forceSettle(Long appealId, Long adminId) {
         TaskAppeal appeal = taskAppealMapper.findById(appealId);
         if (appeal == null) {
             return Result.error("申诉不存在");
@@ -151,7 +154,8 @@ public class TaskAppealService {
         int needStatus = request.getNeedStatus() == null ? 0 : request.getNeedStatus();
         if (needStatus == 3) {
             taskAppealMapper.updateStatus(appealId, 1);
-            return Result.success("任务已是完成状态");
+            adminAttendanceService.recordAppeal(adminId);
+            return Result.success("任务已经完成");
         }
         if (needStatus != 1 && needStatus != 2) {
             return Result.error("当前任务状态不可强制结算");
@@ -188,10 +192,11 @@ public class TaskAppealService {
             return Result.error("任务状态已变化，强制结算失败");
         }
         taskAppealMapper.updateStatus(appealId, 1);
+        adminAttendanceService.recordAppeal(adminId);
         return Result.success("已强制结算并完成任务");
     }
 
-    public Result<String> forceRelease(Long appealId) {
+    public Result<String> forceRelease(Long appealId, Long adminId) {
         TaskAppeal appeal = taskAppealMapper.findById(appealId);
         if (appeal == null) {
             return Result.error("申诉不存在");
@@ -203,7 +208,8 @@ public class TaskAppealService {
         int needStatus = request.getNeedStatus() == null ? 0 : request.getNeedStatus();
         if (needStatus == 0) {
             taskAppealMapper.updateStatus(appealId, 1);
-            return Result.success("任务已是未承接状态");
+            adminAttendanceService.recordAppeal(adminId);
+            return Result.success("任务已经是未承接状态");
         }
         if (needStatus != 1 && needStatus != 2) {
             return Result.error("当前任务状态不可强制释放");
@@ -214,6 +220,7 @@ public class TaskAppealService {
             return Result.error("任务状态已变化，强制释放失败");
         }
         taskAppealMapper.updateStatus(appealId, 1);
+        adminAttendanceService.recordAppeal(adminId);
         return Result.success("已强制释放任务，恢复为未承接");
     }
 

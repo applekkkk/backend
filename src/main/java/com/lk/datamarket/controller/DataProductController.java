@@ -4,10 +4,14 @@ import com.lk.datamarket.common.Result;
 import com.lk.datamarket.domain.DataProduct;
 import com.lk.datamarket.domain.dto.ProductQueryRequest;
 import com.lk.datamarket.service.DataProductService;
+import com.lk.datamarket.utils.JwtUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
 
@@ -42,9 +46,13 @@ public class DataProductController {
     }
 
     @PutMapping("/{id}/approve")
-    public Result<String> approveProduct(@PathVariable Long id, @RequestParam Integer status) {
-        log.info("Review product id: {}, status: {}", id, status);
-        return dataProductService.approveProduct(id, status);
+    public Result<String> approveProduct(@PathVariable Long id,
+                                         @RequestParam Integer status,
+                                         @RequestParam(required = false) String remark,
+                                         HttpServletRequest request) {
+        Long adminId = parseUserIdFromToken(request);
+        log.info("Review product id: {}, status: {}, adminId: {}, remark: {}", id, status, adminId, remark);
+        return dataProductService.approveProduct(id, status, adminId, remark);
     }
 
     @GetMapping("/user/{userId}")
@@ -74,5 +82,23 @@ public class DataProductController {
                                            @RequestParam Long userId,
                                            @RequestParam Boolean favorited) {
         return dataProductService.setFavorite(id, userId, favorited);
+    }
+
+    private Long parseUserIdFromToken(HttpServletRequest request) {
+        String auth = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (!StringUtils.hasText(auth) || !auth.startsWith("Bearer ")) {
+            return null;
+        }
+        try {
+            String token = auth.substring(7).trim();
+            Map<String, Object> claims = JwtUtil.parseToken(token);
+            Object id = claims.get("id");
+            if (id == null) {
+                return null;
+            }
+            return Long.parseLong(String.valueOf(id));
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }
